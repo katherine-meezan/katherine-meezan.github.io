@@ -1,15 +1,3 @@
-"""!
-@file basic_tasks.py
-    This file contains a demonstration program that runs some tasks, an
-    inter-task shared variable, and a queue. The tasks don't really @b do
-    anything; the example just shows how these elements are created and run.
-
-@author JR Ridgely
-@date   2021-Dec-15 JRR Created from the remains of previous example
-@copyright (c) 2015-2021 by JR Ridgely and released under the GNU
-    Public License, Version 2.
-"""
-
 import gc
 import pyb
 import cotask
@@ -23,7 +11,6 @@ from time import sleep_ms
 from pyb import USB_VCP
 
 from machine import UART
-
 
 ser = USB_VCP()
 
@@ -39,6 +26,7 @@ Pin(Pin.cpu.B7, mode=Pin.ALT, alt=7)
 uart = UART(1, 115200)  # init with given baudrate
 uart.init(115200, bits=8, parity=None, stop=1)  # init with given parameters
 uart.write("test".encode())
+
 
 
 # L_en = 0
@@ -71,37 +59,7 @@ right_encoder = Encoder(timRight, ch1Right, ch2Right)
 mot_left = motor_driver(Pin.cpu.B9, Pin.cpu.C9, Pin.cpu.C8, Timer(17, freq=60000), 1)
 mot_right = motor_driver(Pin.cpu.A6, Pin.cpu.A1, Pin.cpu.A0, Timer(16, freq=60000), 1)
 
-def task1_fun(shares):
-    """!
-    Task which puts things into a share and a queue.
-    @param shares A list holding the share and queue used by this task
-    """
-    # Get references to the share and queue which have been passed to this task
-    my_share, my_queue = shares
 
-    counter = 0
-    while True:
-        my_share.put(counter)
-        my_queue.put(counter)
-        counter += 1
-        yield 0
-
-
-def task2_fun(shares):
-    """!
-    Task which takes things out of a queue and share and displays them.
-    @param shares A tuple of a share and queue from which this task gets data
-    """
-    # Get references to the share and queue which have been passed to this task
-    the_share, the_queue = shares
-
-    while True:
-        # Show everything currently in the queue and the value in the share
-        print(f"Share: {the_share.get ()}, Queue: ", end='')
-        while q0.any():
-            print(f"{the_queue.get ()} ", end='')
-        print('')
-        yield 0
 
 """
 
@@ -414,9 +372,13 @@ def collect_data(shares):
             while R_TIME_Q.any():
                 size += 1
                 uart.write(f"{R_TIME_Q.get()}, {RIGHT_VEL_Q.get()}\r\n")
-            uart.write(f"LEFT MOTOR: EFFORT =  {L_EFF.get()}\r\n")
+                sleep_ms(5)
+            # uart.write(f"LEFT MOTOR: EFFORT =  {L_EFF.get()}\r\n")
+            sleep_ms(10)
+            uart.write(f"LEFT MOTOR\r\n")
             while L_TIME_Q.any():
                 uart.write(f"{L_TIME_Q.get()}, {LEFT_VEL_Q.get()}\r\n")
+                sleep_ms(5)
             uart.write(f"Number of data points: {size}\r\n")
             state = 1
         yield state

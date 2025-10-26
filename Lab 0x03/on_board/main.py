@@ -194,6 +194,9 @@ def run_UI(shares):
             test_end_time = 0
             Run.put(0)
             state = 1
+            # clear out all unread inputs.
+            if uart.any():
+                uart.read()
         elif state == 1:
             if uart.any(): # wait for any character
                 char_in = uart.read(1).decode()

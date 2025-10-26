@@ -95,29 +95,40 @@ with Serial(ComPort, baudrate=115_200, timeout=1) as ser:
     right_motor_data = []
     left_motor_data = []
 
+    read_right = False
+    read_left = False
     while True:
         line = ser.readline().decode(errors="replace").strip()
-        if not line:
-            continue
-
+        # if not line:
+        #     continue
         if line.startswith("RIGHT MOTOR"):
             print("Reading right motor data...")
-            right_data, next_line = read_data(ser)
-            print("Finished reading right motor data")
-        if line.startswith("LEFT"):
-            print("Reading left motor data...")
-            left_data, _ = read_data(ser)
-            break
-        # print(line)
+            read_right = True
+            continue
+        if read_right:
+            if line.startswith("LEFT"):
+                print("Reading left motor data...")
+                read_right = False
+                read_left = True
+            else:
+                right_motor_data.append(line)
+        elif read_left:
+            if line:
+                left_motor_data.append(line)
+            else:
+                print("Data collection complete")
+                read_left = True
+                break
+
 
 with open("right_motor.csv", 'w') as file:
     file.seek(0)
     file.truncate()
-    save_csv("right_motor.csv", right_data)
+    save_csv("right_motor.csv", right_motor_data)
 with open("left_motor.csv", 'w') as file:
     file.seek(0)
     file.truncate()
-    save_csv("left_motor.csv", left_data)
+    save_csv("left_motor.csv", left_motor_data)
 
 data_right = pd.read_csv("right_motor.csv", header=None, names=["time", "velocity"])
 data_left = pd.read_csv("left_motor.csv", header=None, names=["time", "velocity"])

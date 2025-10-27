@@ -19,10 +19,11 @@ Created on Thu Oct 23 09:23:36 2025
 #         a = v_error * self.Kp  # Output of block
 #         return a
 
-from abc import ABC, abstractmethod
-from time import ticks_us, ticks_diff
-class Controller(ABC):
-    def __init__(self, target, old_ticks, old_state, Kp, Ki, min_sat, max_sat, t_init):
+from time import ticks_diff
+class CLMotorController():
+    def __init__(self, target, old_ticks, old_state, Kp=0.1, Ki=0.1, min_sat=-100, max_sat=100, t_init=0, gain=0.01,
+                 v_nom=5.0, threshold=4.0):
+        # super().__init__(target, old_ticks, old_state, Kp, Ki, min_sat, max_sat, t_init)
         self.target = target
         self.old_ticks = old_ticks
         self.old_state = old_state
@@ -34,6 +35,14 @@ class Controller(ABC):
         self.acc_error = 0
         self.dt = 1
         self.t_init = t_init
+        self.gain = gain
+        self.v_nom = v_nom
+        self.v_bat = self.v_nom
+        self.bat_gain = self.v_bat/self.v_nom
+        self.threshold = threshold
+        self.K1 = 65.35 # (encoder counts/sec)/ %pwm # PLACEHOLDER VALUE
+        self.K2 = 30 # wheel degrees per motor count
+        self.K3 = 1/self.K1
     def set_Kp(self, Kp):
         self.Kp = Kp
 
@@ -45,23 +54,6 @@ class Controller(ABC):
 
     def set_target(self, target):
         self.target = target
-
-    @abstractmethod
-    def get_action(self, new_ticks, new_state):  # a different control law can be created for every controller class
-        ...
-
-class CLMotorController(Controller):
-    def __init__(self, target, old_ticks, old_state, Kp=0.1, Ki=0.1, min_sat=-100, max_sat=100, t_init=0, gain=0.01,
-                 v_nom=5.0, threshold=4.0):
-        super().__init__(target, old_ticks, old_state, Kp, Ki, min_sat, max_sat, t_init)
-        self.gain = gain
-        self.v_nom = v_nom
-        self.v_bat = self.v_nom
-        self.bat_gain = self.v_bat/self.v_nom
-        self.threshold = threshold
-        self.K1 = 65.35 # (encoder counts/sec)/ %pwm # PLACEHOLDER VALUE
-        self.K2 = 30 # wheel degrees per motor count
-        self.K3 = 1/self.K1
     def set_battery(self, v_bat):
         # sets the battery level and calculates the gain
         self.v_bat = v_bat

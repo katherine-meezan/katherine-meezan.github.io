@@ -9,7 +9,7 @@ from Encoder import Encoder
 from motor_driver import motor_driver
 from time import sleep_ms
 from pyb import USB_VCP
-from controller import CLMotorController, Controller
+from controller import CLMotorController
 
 from machine import UART
 

@@ -33,13 +33,13 @@ class CLMotorController():
         self.max_sat = max_sat
         self.error = 0
         self.acc_error = 0
-        self.dt = 1
+        self.dt = 0
         self.t_init = t_init
         self.v_nom = v_nom
         self.v_bat = self.v_nom
         self.bat_gain = self.v_bat/self.v_nom
         self.threshold = threshold # threshold for battery signal
-        self.K1 = 65.35 # (encoder counts/sec)/ %pwm # PLACEHOLDER VALUE
+        self.K1 = 65.35/120 # (encoder counts/sec)/ %pwm # PLACEHOLDER VALUE
         self.K2 = 30 # wheel degrees per motor count
         self.K3 = 1/self.K1 # effort=%pwm / (encoder counts/sec)
     def set_Kp(self, Kp):
@@ -64,10 +64,17 @@ class CLMotorController():
         # To calculate error, first convert set point in effort to counts/sec
         # Scale for battery droop
         self.error = (self.target*self.K1*self.bat_gain - new_state)*self.K2 # error in WHEEL DEGREES/SEC
-        self.dt = ticks_diff(new_ticks, self.old_ticks)/1E6
-        self.acc_error = self.acc_error + self.error*self.dt #Integral error, equivalent to degrees
+        if(self.old_ticks == 0):
+            self.old_ticks = new_ticks
+            print(f"init!: self")
+        else:
+            self.dt = ticks_diff(new_ticks, self.old_ticks)/1E6
+            self.acc_error = self.acc_error + self.error*self.dt #Integral error, equivalent to degrees
+            print(f"timestep: {self.dt}, Err: {self.error}, Acc: {self.acc_error}")
+            self.old_ticks = new_ticks
         # do control algorithm
-        ctrl_sig = self.Kp*self.error # + self.Ki*self.acc_error
+        ctrl_sig = self.Kp*self.error + self.Ki*self.acc_error
+        # print(f"ctrlr l75, target: {self.target}, error: {self.error}, acc: {self.acc_error}, total: {ctrl_sig}")
         if ctrl_sig > self.max_sat:
             ctrl_sig = self.max_sat
         elif ctrl_sig < self.min_sat:
@@ -75,7 +82,6 @@ class CLMotorController():
         # total *= self.K3 # change action into an effort (%pwm) value
         ctrl_sig = max(ctrl_sig, self.min_sat)
         ctrl_sig = min(ctrl_sig, self.max_sat)
-        print(f"ctrlr line 79, target: {self.target}, error: {self.error}, acc: {self.acc_error}, total: {ctrl_sig}")
         return ctrl_sig
 
 

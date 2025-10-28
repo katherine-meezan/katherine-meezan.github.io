@@ -60,9 +60,9 @@ right_encoder = Encoder(timRight, ch1Right, ch2Right)
 mot_left = motor_driver(Pin.cpu.B9, Pin.cpu.C9, Pin.cpu.C8, Timer(17, freq=60000), 1)
 mot_right = motor_driver(Pin.cpu.A6, Pin.cpu.A1, Pin.cpu.A0, Timer(16, freq=60000), 1)
 
-cl_ctrl_mot_left = CLMotorController(15, 0, 0, Kp=0.1, Ki=0, min_sat=-100, max_sat=100, t_init=0, gain=0.01,
+cl_ctrl_mot_left = CLMotorController(10, 0, 0, Kp=0.05, Ki=0.0001, min_sat=-100, max_sat=100, t_init=0,
                  v_nom=5.0, threshold=4.0)
-cl_ctrl_mot_right = CLMotorController(15, 0, 0, Kp=0.1, Ki=0, min_sat=-100, max_sat=100, t_init=0, gain=0.01,
+cl_ctrl_mot_right = CLMotorController(0, 0, 0, Kp=0.01, Ki=0, min_sat=-100, max_sat=100, t_init=0,
                  v_nom=5.0, threshold=4.0)
 
 
@@ -461,7 +461,7 @@ if __name__ == "__main__":
 
     # Add tasks to task list to run in scheduler
     cotask.task_list.append(task_left_ops)
-    cotask.task_list.append(task_right_ops)
+    # cotask.task_list.append(task_right_ops) # ONLY TESTING ON LEFT MOTOR CURRENTLY
     # cotask.task_list.append(task_dumb_ui)
     cotask.task_list.append(task_ui)
     cotask.task_list.append(task_collect_data)

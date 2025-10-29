@@ -37,7 +37,7 @@ class CLMotorController():
         self.t_init = t_init
         self.v_nom = v_nom # expected/ideal battery level
         self.v_bat = self.v_nom
-        self.bat_gain = self.v_bat/self.v_nom
+        self.bat_gain = self.v_nom/self.v_bat
         self.threshold = threshold # threshold for battery signal
         self.K1 = 1.637 # (wheel degrees/sec)/ mm/s
         self.K2 = 0.25 # wheel degrees per encoder count
@@ -56,7 +56,7 @@ class CLMotorController():
     def set_battery(self, v_bat):
         # sets the battery level and calculates the gain
         self.v_bat = v_bat
-        self.bat_gain = self.v_bat/self.v_nom
+        self.bat_gain = self.v_nom/self.v_bat
 
     def get_action(self, new_ticks, new_state):
         # new_state is a velocity in counts/sec
@@ -78,6 +78,7 @@ class CLMotorController():
         ctrl_sig = raw_ctrl_sig*self.K3
         # Units: desired in deg/s, err in deg/s, acc in total deg, raw in deg/s, sig in %pwm=effort
         # print(f"desired: {self.target*self.K1}, curr: {new_state*self.K2},Err: {self.error}, Acc: {self.acc_error}, Raw: {raw_ctrl_sig}, Sig: {ctrl_sig}")
+        print(f"CTRL SIG: {ctrl_sig}, bat_gain: {self.bat_gain}")
         ctrl_sig = max(ctrl_sig, self.min_sat) # apply saturation
         ctrl_sig = min(ctrl_sig, self.max_sat)
         return ctrl_sig

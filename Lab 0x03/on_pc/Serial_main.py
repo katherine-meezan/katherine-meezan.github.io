@@ -58,12 +58,12 @@ with Serial(ComPort, baudrate=115_200, timeout=1) as ser:
     print("Sending command to start data collection")
 
 
-    # ser.write(b"r\r\n")
-    # sleep(.5)
-    # ser.write(b"s\r\n")
-    # sleep(5)
-    # ser.write(b"z\r\n")
-    # sleep(2)
+    ser.write(b"r\r\n")
+    sleep(.5)
+    ser.write(b"s\r\n")
+    sleep(5)
+    ser.write(b"z\r\n")
+    sleep(2)
 
     print("Flushing serial port")
     while ser.in_waiting:

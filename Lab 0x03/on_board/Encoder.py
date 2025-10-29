@@ -50,7 +50,7 @@ class Encoder:
         '''Sets the present encoder position to zero and causes future updates
            to measure with respect to the new zero position'''
         self.position = 0
-        self.enc_count_new = self.tim.counter
+        self.enc_count_old = self.tim.counter()
         # self.delta = 0
         # self.ticks_new = ticks_us()
         # self.dt = 0

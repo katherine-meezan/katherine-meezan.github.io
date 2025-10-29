@@ -60,13 +60,15 @@ right_encoder = Encoder(timRight, ch1Right, ch2Right)
 mot_left = motor_driver(Pin.cpu.B9, Pin.cpu.C9, Pin.cpu.C8, Timer(17, freq=60000), 1)
 mot_right = motor_driver(Pin.cpu.A6, Pin.cpu.A1, Pin.cpu.A0, Timer(16, freq=60000), 1)
 
+PC2 = Pin(Pin.cpu.C2, mode=Pin.ANALOG)
+BAT_READ = pyb.ADC(PC2)
 
 
 #CONTROLLER SETPOINT IS IN MM/S
-cl_ctrl_mot_left = CLMotorController(0, 0, 0, Kp=1, Ki=5, min_sat=-100, max_sat=100, t_init=0,
-                 v_nom=5.0, threshold=4.0, K3=1.382)
+cl_ctrl_mot_left = CLMotorController(10, 0, 0, Kp=1, Ki=5, min_sat=-100, max_sat=100, t_init=0,
+                 v_nom=2.878, threshold=1.439, K3=1.382)
 cl_ctrl_mot_right = CLMotorController(0, 0, 0, Kp=1, Ki=5, min_sat=-100, max_sat=100, t_init=0,
-                 v_nom=5.0, threshold=4.0, K3=1.4272)
+                 v_nom=2.878, threshold=1.439, K3=1.4272)
 
 
 
@@ -192,7 +194,6 @@ Motor step response test:
     Turns both motors off (effort does not reset)
     Sets run share to start/stop data collection (data collection is not working)
 !"""
-
 
 
 def run_UI(shares):
@@ -402,6 +403,23 @@ def collect_data(shares):
             state = 1
         yield state
 
+def battery_read(shares):
+    while True:
+        # print("BATTERY TASK")
+        battery, low_bat_flag = shares
+        battery_level = BAT_READ.read()*3.3/4095 # CONVERT TO VOLTAGE
+        battery.put(battery_level)
+        cl_ctrl_mot_left.set_battery(battery_level)
+        cl_ctrl_mot_right.set_battery(battery_level)
+        if battery_level<cl_ctrl_mot_left.threshold:
+            low_bat_flag.put(1)
+        else:
+            low_bat_flag.put(0)
+        # print("END BATTERY TASK")
+        print(f"Battery task: {battery.get()}, {low_bat_flag.get()}")
+        yield 0
+
+
 
 # This code creates a share, a queue, and two tasks, then starts the tasks. The
 # tasks run until somebody presses ENTER, at which time the scheduler stops and
@@ -430,6 +448,8 @@ if __name__ == "__main__":
     R_time_share = task_share.Share('I', thread_protect=False, name="R time")
     run = task_share.Share('H', thread_protect=False, name="run")
     print_out = task_share.Share('H', thread_protect=False, name="print out")
+    bat_share = task_share.Share('f', thread_protect=False, name="print out")
+    bat_flag = task_share.Share('H', thread_protect=False, name="print out")
     # R_pos_queue = task_share.Queue('f', 100, name="R pos")
     # R_vel_queue = task_share.Queue('f', 100, name="R vel")
     # R_time_queue = task_share.Queue('I', 100, name="R time")
@@ -445,19 +465,22 @@ if __name__ == "__main__":
     # debugging and set trace to False when it's not needed2
 
     task_left_ops = cotask.Task(left_ops, name="Left ops", priority=3, period=50,
-                                profile=False, trace=False, shares=(L_dir_share,
+                                profile=True, trace=True, shares=(L_dir_share,
                                                                     L_eff_share, L_en_share, L_pos_share, L_vel_share, L_time_share))
     task_right_ops = cotask.Task(right_ops, name="Right ops", priority=4, period=50,
-                                 profile=False, trace=False, shares=(R_dir_share,
+                                 profile=True, trace=True, shares=(R_dir_share,
                                                                      R_eff_share, R_en_share, R_pos_share, R_vel_share, R_time_share))
     # task_dumb_ui = cotask.Task(dumb_ui, name="Dumb UI", priority=1, period=10,
-    #                             profile=False, trace=False, shares=(L_eff_share, R_eff_share))
+    #                             profile=True, trace=True, shares=(L_eff_share, R_eff_share))
 
     task_ui = cotask.Task(run_UI, name="UI", priority=0, period=60,
-                          profile=False, trace=False, shares=(L_eff_share, L_en_share, R_eff_share, R_en_share, run, print_out))
+                          profile=True, trace=True, shares=(L_eff_share, L_en_share, R_eff_share, R_en_share, run, print_out))
 
     task_collect_data = cotask.Task(collect_data, name="Collect Data", priority=2, period=50,
-                                profile=False, trace=False, shares=(R_eff_share, L_eff_share, R_pos_share, R_vel_share, R_time_share, L_pos_share, L_vel_share, L_time_share, run, print_out))
+                                profile=True, trace=True, shares=(R_eff_share, L_eff_share, R_pos_share, R_vel_share, R_time_share, L_pos_share, L_vel_share, L_time_share, run, print_out))
+
+    task_read_battery = cotask.Task(battery_read, name="Battery", priority=0, period=1000,
+                                profile=True, trace=True, shares=(bat_share, bat_flag))
 
     # cotask.task_list.append(task1)
     # cotask.task_list.append(task2)
@@ -468,6 +491,7 @@ if __name__ == "__main__":
     # cotask.task_list.append(task_dumb_ui)
     cotask.task_list.append(task_ui)
     cotask.task_list.append(task_collect_data)
+    cotask.task_list.append(task_read_battery)
 
     # Run the memory garbage collector to ensure memory is as defragmented as
     # possible before the real-time scheduler is started
@@ -480,11 +504,13 @@ if __name__ == "__main__":
         try:
             cotask.task_list.pri_sched()
         except KeyboardInterrupt:
+            print('\n' + str(cotask.task_list))
+            print(task_share.show_all())
+            print('')
             break
-
     # Print a table of task data and a table of shared information data
-    # print('\n' + str (cotask.task_list))
-    # print(task_share.show_all())
-    # print('')
+    print('\n' + str (cotask.task_list))
+    print(task_share.show_all())
+    print('')
 
 

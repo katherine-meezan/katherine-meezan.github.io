@@ -84,7 +84,7 @@ ir_controller = IRController(centroid_set_point, 0, 0, Kp=1, Ki=0)
 
 def IR_sensor(shares):
     global centroid_set_point
-    calib_black, calib_white, line_follow, L_speed_share, R_speed_share = shares
+    calib_black, calib_white, line_follow, L_speed_share, R_speed_share, wheel_diff = shares
     state = 0
     while True:
         # print("IR TASK CALLED")
@@ -119,7 +119,7 @@ def IR_sensor(shares):
             ir_controller.set_target(centroid_set_point)
             ir_sensor_array.array_read()
             ir_ticks_new = ticks_us() # timestamp sensor reading for controller
-            wheel_speed_diff = ir_controller.get_action(ir_sensor_array.find_centroid(), ir_ticks_new)
+            wheel_speed_diff = ir_controller.get_action(ir_ticks_new, ir_sensor_array.find_centroid())
             # split the difference in wheel speeds evenly between the two wheels
             L_speed = L_speed_share.get()
             R_speed = R_speed_share.get()
@@ -127,6 +127,8 @@ def IR_sensor(shares):
             R_speed += wheel_speed_diff/2
             L_speed_share.put(L_speed)
             R_speed_share.put(R_speed)
+            print(f"Centroid: {ir_sensor_array.find_centroid()} R_speed: {R_speed} L_speed: {L_speed}")
+            # print(wheel_speed_diff)
         yield state
 
 
@@ -341,6 +343,26 @@ def run_UI(shares):
                 Run.put(1) # Indicates start to data collection
                 test_start_time = ticks_ms() # Record start time of test
                 state = 3
+            elif char_in == "i": # run black calibration sequence for IR sensor
+               calib_black.put(1)
+               state = 1
+               print("recieved i")
+            elif char_in == "w":
+               calib_white.put(1)
+               state = 1
+            elif char_in == "y":
+                l_en = 1
+                r_en = 1
+                r_eff = 2
+                l_eff = 2
+                R_eff.put(r_eff)
+                L_eff.put(l_eff)
+                L_en.put(l_en)
+                R_en.put(r_en)
+                
+                line_follow.put(1)
+                state = 1
+            
             else:
                 state = 1
         elif state == 3: # Start data collection without running the motors so the start of the step response can be observed
@@ -519,6 +541,8 @@ if __name__ == "__main__":
     calib_black = task_share.Share('H', thread_protect=False, name="print out")
     calib_white = task_share.Share('H', thread_protect=False, name="print out")
     line_follow = task_share.Share('H', thread_protect=False, name="print out")
+    wheel_diff = task_share.Share('f', thread_protect=False, name="wheel speed diff")
+    
 
     # R_pos_queue = task_share.Queue('f', 100, name="R pos")
     # R_vel_queue = task_share.Queue('f', 100, name="R vel")

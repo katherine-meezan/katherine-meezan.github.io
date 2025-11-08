@@ -120,7 +120,7 @@ class IRController():
 
     def get_action(self, new_ticks, new_state):
         # new_ticks is a count in microseconds
-        raw_error = (self.target*self.K1 - new_state*self.K2)
+        self.error = (self.target*self.K1 - new_state*self.K2)
         if(self.old_ticks == 0):
             self.old_ticks = new_ticks
             # print(f"init!: self")

@@ -52,8 +52,10 @@ class sensor_array:
             norm_val = (raw_val - self.whites[i])/(self.blacks[i] - self.whites[i]) # normalize between calibrated black and white values, cap values at 0 and 1
             sum_vals += norm_val
             weighted_sum += norm_val*(i - self.center)
-        return (weighted_sum/sum_vals)#*self.dist_mm
-        
+        centroid = weighted_sum/sum_vals
+        centroid = min(centroid, 8)
+        centroid = max(centroid, -8)
+        return centroid        
     # def sensor_on:
 
     # def sensor_off:

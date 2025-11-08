@@ -40,16 +40,6 @@ def save_csv(filename, data_lines):
 
 
 with Serial(ComPort, baudrate=115_200, timeout=1) as ser:
-    print("Opening serial port")
-    sleep(0.5)
-
-    print("Sending Ctrl-C to break into REPL...")
-    ser.write(b"\x03")  # Ctrl-C
-    sleep(0.5)
-
-    print("Sending Ctrl-D to soft reboot and run main.py...")
-    ser.write(b"\x04")  # Ctrl-D
-    sleep(1)
 
     print("Flushing serial port")
     while ser.in_waiting:

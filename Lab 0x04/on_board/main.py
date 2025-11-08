@@ -80,7 +80,7 @@ channels = [ir_ch1, ir_ch3, ir_ch5, ir_ch7, ir_ch9, ir_ch11, ir_ch13]
 ir_sensor_array = sensor_array(channels, 4, 8)
 
 centroid_set_point = 0
-ir_controller = IRController(centroid_set_point, 0, 0, Kp=1, Ki=0)
+ir_controller = IRController(centroid_set_point, 0, 0, Kp=3, Ki=1)
 
 def IR_sensor(shares):
     global centroid_set_point
@@ -98,24 +98,28 @@ def IR_sensor(shares):
         elif state == 1:
             print("Starting Black Calibration!")
             calib_start = ticks_ms()
-            ir_sensor_array.calibrate_black()
+            # ir_sensor_array.calibrate_black()
             calib_end = ticks_ms()
             calib_time = ticks_diff(calib_end, calib_start)
             print(f"Calibration complete! Time elapsed: {calib_time/1000}")
             print(f"Black Values: {ir_sensor_array.blacks}")
+            # ir_sensor_array.blacks = [3206.13, 2983.14, 3063.67, 2910.69, 2800.52, 2930.22, 3063.97]
             calib_black.put(0)
             state = 0
         elif state == 2:
             print("Starting White Calibration!")
             calib_start = ticks_ms()
-            ir_sensor_array.calibrate_white()
+            # ir_sensor_array.calibrate_white()
             calib_end = ticks_ms()
             calib_time = ticks_diff(calib_end, calib_start)
             print(f"Calibration complete! Time elapsed: {calib_time/1000}")
             print(f"White Values: {ir_sensor_array.whites}")
+            # ir_sensor_array.whites = [360.62, 299.06, 297.68, 286.17, 281.66, 295.05, 316.05]
             calib_white.put(0)
             state = 0
         elif state == 3:
+            ir_sensor_array.blacks = [3206.13, 2983.14, 3063.67, 2910.69, 2800.52, 2930.22, 3063.97]
+            ir_sensor_array.whites = [360.62, 299.06, 297.68, 286.17, 281.66, 295.05, 316.05]
             ir_controller.set_target(centroid_set_point)
             ir_sensor_array.array_read()
             ir_ticks_new = ticks_us() # timestamp sensor reading for controller
@@ -178,11 +182,12 @@ def left_ops(shares):
                     L_dir.put(1)
                 else:
                     L_dir.put(0)
-                cl_ctrl_mot_left.set_target(L_eff.get())
+                left_base_target = L_eff.get()
+                cl_ctrl_mot_left.set_target(left_base_target)
                 L_prev_eff = L_eff.get() # store and update the effort
             if(follower_on.get()):  # implement the speed adjustment from the line follower task
                 follower_diff = line_follower_diff.get()/2
-                cl_ctrl_mot_left.set_target(cl_ctrl_mot_left.target - follower_diff)
+                cl_ctrl_mot_left.set_target(left_base_target - follower_diff)
             
             # print("LINE 113")
             t_print = cl_ctrl_mot_left.get_action(L_t_new, left_encoder.get_velocity())
@@ -232,11 +237,12 @@ def right_ops(shares):
                     R_dir.put(1)
                 else:
                     R_dir.put(0)
-                cl_ctrl_mot_right.set_target(R_eff.get())
-                R_prev_eff = R_eff.get()  # store and update the effort
+                right_base_target = R_eff.get()
+                cl_ctrl_mot_right.set_target(right_base_target)
+                R_prev_eff = R_eff.get() # store and update the effort
             if(follower_on.get()):  # implement the speed adjustment from the line follower task
                 follower_diff = line_follower_diff.get()/2
-                cl_ctrl_mot_right.set_target(cl_ctrl_mot_right.target + follower_diff)
+                cl_ctrl_mot_right.set_target(right_base_target + follower_diff)
                 
             t_print = cl_ctrl_mot_right.get_action(R_t_new, right_encoder.get_velocity())
             # print(f"RIGHT SPEED: {t_print}")

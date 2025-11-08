@@ -46,17 +46,17 @@ with Serial(ComPort, baudrate=115_200, timeout=1) as ser:
         ser.read()
         
 
-    print("Starting Black Calibration")
+    # print("Starting Black Calibration")
     
-    ser.write(b"i\r\n")
+    # ser.write(b"i\r\n")
+    # sleep(2)
+    # print("Move to White")
+    # sleep(4)
+    # print("Starting White calibration")
+    # ser.write(b"w\r\n")
+    # sleep(2)
+    # print("Calibration Done. Move to line")
     sleep(2)
-    print("Move to White")
-    sleep(4)
-    print("Starting White calibration")
-    ser.write(b"w\r\n")
-    sleep(2)
-    print("Calibration Done. Move to line")
-    sleep(4)
     ser.write(b"y\r\n")
 
     while not ser.in_waiting: continue

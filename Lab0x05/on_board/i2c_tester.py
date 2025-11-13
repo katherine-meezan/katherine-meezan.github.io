@@ -1,6 +1,7 @@
 from pyb import Timer, Pin, I2C
 from IMU_I2C import IMU_I2C
 from time import sleep_ms
+import struct
 
 BNO055_ADDRESS_A = 0x28
 
@@ -67,33 +68,44 @@ print("IMU READY!")
 
 # set mode to make it calibrate
 # IMU.changeOpMode(IMU_op_mode)
-I2C_BUS_2.mem_write(config_op_mode, BNO055_ADDRESS_A, BNO055_OPR_MODE_ADDR, timeout=5000, addr_size=8)
+I2C_BUS_2.mem_write(config_op_mode, BNO055_ADDRESS_A, BNO055_OPR_MODE_ADDR, timeout=50, addr_size=8)
 # I2C_BUS_2.mem_write(ndof_mode, BNO055_ADDRESS_A, BNO055_OPR_MODE_ADDR, timeout=5000, addr_size=8)
 # I2C_BUS_2.mem_write(amg_mode, BNO055_ADDRESS_A, BNO055_OPR_MODE_ADDR, timeout=5000, addr_size=8)
-I2C_BUS_2.mem_write(IMU_op_mode, BNO055_ADDRESS_A, BNO055_OPR_MODE_ADDR, timeout=5000, addr_size=8)
+sleep_ms(20)
+I2C_BUS_2.mem_write(IMU_op_mode, BNO055_ADDRESS_A, BNO055_OPR_MODE_ADDR, timeout=50, addr_size=8)
 # wait for the device to finish calibrating
 calibrated = False
 cal_stat = bytearray([0])
+self_test = bytearray([0])
+syst_status = bytearray([0])
 # cal_stat = bytes(1)
+
 while not calibrated:
-    cal_stat = I2C_BUS_2.mem_read(cal_stat, BNO055_ADDRESS_A, BNO055_CALIB_STAT_ADDR, addr_size=8)
+    I2C_BUS_2.mem_read(self_test, BNO055_ADDRESS_A, BNO055_SELFTEST_RESULT_ADDR, addr_size=8)
+    I2C_BUS_2.mem_read(syst_status, BNO055_ADDRESS_A, BNO055_SYS_STAT_ADDR, addr_size=8)
+    I2C_BUS_2.mem_read(cal_stat, BNO055_ADDRESS_A, BNO055_CALIB_STAT_ADDR, addr_size=8)
     mag_stat = cal_stat[0]&0b11
     acc_stat = (cal_stat[0]>>2) & 0b11
     gyr_stat = (cal_stat[0]>>4) & 0b11
     sys_stat = (cal_stat[0]>>6) & 0b11
-    if sys_stat==0b11:
-        calibrated = True
     print(f"MAG: {mag_stat}, ACC: {acc_stat}, GYR: {gyr_stat}, SYS: {sys_stat}, CAL_STAT: {cal_stat[0]}")
+    if mag_stat==0b11 & acc_stat==0b11 & gyr_stat==0b11:
+        calibrated = True
+    # print(f"syst_status = {bin(syst_status[0])}, self_test = {bin(self_test[0])}"
     # print(f"buffer: {calib_buffer}")
+
 # read the calibration profile
 calib_profile_buffer = bytearray([0]*22)
 I2C_BUS_2.mem_read(calib_profile_buffer, BNO055_ADDRESS_A, 0x55, addr_size=8)
 print(calib_profile_buffer)
 
 
+def readAngluarVelocity():  # Reads angular velocity from the IMU
+    gyr_data_x_lsb = 0x14
+    get_ang_vel = I2C_BUS_2.mem_read(6, BNO055_ADDRESS_A, gyr_data_x_lsb, timeout=50)
+    x, y, z = struct.unpack('<hhh', get_ang_vel)
+    return (x, y, z)
 
-
-
-
-
-
+while True:
+    print(readAngluarVelocity())
+    sleep_ms(100)

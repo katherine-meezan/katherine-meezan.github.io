@@ -51,7 +51,7 @@ I2C_BUS_2 = I2C(2, I2C.CONTROLLER)             # create and init as a controller
 I2C_BUS_2.init(I2C.CONTROLLER, baudrate=400000) # init as a controller
 # I2C_BUS_2.init(I2C.PERIPHERAL, addr=0x29)      # init as a peripheral with given address
 
-IMU = IMU_I2C(I2C_BUS_2, BNO055_OPR_MODE_ADDR)
+IMU = IMU_I2C(I2C_BUS_2, BNO055_ADDRESS_A)
 
 devs = []
 while devs == []:

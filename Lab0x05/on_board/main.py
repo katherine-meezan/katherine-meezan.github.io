@@ -319,7 +319,7 @@ def left_ops(shares):
     print("LEFT OPS")
     state = 0
     # params: L dir, L eff, L en, L pos, L vel, L time
-    L_dir, L_eff, L_en, L_pos, L_vel, L_time, line_follower_diff, follower_on = shares
+    L_lin_spd, L_en, L_pos, L_vel, L_time, line_follower_diff, follower_on = shares
     global L_prev_dir, L_prev_eff, L_prev_en, L_t_start
     # State 0: init
     while True:
@@ -329,44 +329,26 @@ def left_ops(shares):
             left_encoder.update()
             L_t_start = ticks_us()
             L_en.put(1)
-            L_dir.put(0)
             state = 1
         elif state == 1:  # task stays in state 1 permanently
             left_encoder.update()  # update encoder
             L_t_new = ticks_us()
-            if L_en.get() != L_prev_en:  # check if the enable signal has changed using the global variables
-                # global variables are used to store the internal data/state of the task
-                if L_en.get() > 0:
-                    left_encoder.zero()
-                    mot_left.enable()
-                    L_prev_en = L_en.get()  # update internal state variable
-                else:
-                    mot_left.disable()
-                    L_prev_en = L_en.get()
-            if L_eff.get() != L_prev_eff:
-                L_prev_dir = L_dir.get()  # update the direction to match the effort input
-                if L_eff.get() > 0:
-                    L_dir.put(1)
-                else:
-                    L_dir.put(0)
-                left_base_target = L_eff.get()
-                cl_ctrl_mot_left.set_target(left_base_target)
-                L_prev_eff = L_eff.get()  # store and update the effort
-            if (follower_on.get()):  # implement the speed adjustment from the line follower task
+            # global variables are used to store the internal data/state of the task
+            if L_en.get() > 0:
+                left_encoder.zero()
+                mot_left.enable()
+            else:
+                mot_left.disable()
+            left_base_target = L_lin_spd.get()
+            cl_ctrl_mot_left.set_target(left_base_target)
+            if follower_on.get():  # implement the speed adjustment from the line follower task
                 follower_diff = line_follower_diff.get() / 2
                 cl_ctrl_mot_left.set_target(left_base_target - follower_diff)
-
-            # print("LINE 113")
-            t_print = cl_ctrl_mot_left.get_action(L_t_new, left_encoder.get_velocity())
-            # print(f"ticks: {L_t_new}, vel: {left_encoder.get_velocity()}, eff: {t_print}")
-            # print("Line 115")
-            # print(t_print)
-            # print(f"LEFT SPEED: {t_print}")
-            mot_left.set_effort(t_print)
-            L_pos.put(left_encoder.get_position())
-            L_vel.put(left_encoder.get_velocity())
+            pwm_percent = cl_ctrl_mot_left.get_action(L_t_new, left_encoder.get_velocity()) # mm/s
+            mot_left.set_effort(pwm_percent) # mm/s
+            L_pos.put(left_encoder.get_position()) # counts
+            L_vel.put(left_encoder.get_velocity()) # counts
             L_time.put(ticks_diff(L_t_new, L_t_start))
-            # print(L_pos.get(), L_vel.get(), L_time.get())
         yield 1
 
 
@@ -374,7 +356,7 @@ def right_ops(shares):
     # print("RIGHT OPS")
     state = 0
     # params: R dir, R eff, R en, R pos, R vel, R time
-    R_dir, R_eff, R_en, R_pos, R_vel, R_time, line_follower_diff, follower_on = shares
+    R_lin_spd, R_en, R_pos, R_vel, R_time, line_follower_diff, follower_on = shares
     global R_prev_dir, R_prev_eff, R_prev_en, R_t_start
     # State 0: init
     while True:
@@ -390,35 +372,23 @@ def right_ops(shares):
         elif state == 1:
             right_encoder.update()
             R_t_new = ticks_us()
-            if R_en.get() != R_prev_en:
-                if R_en.get() > 0:
-                    right_encoder.zero()
-                    mot_right.enable()
-                    R_prev_en = R_en.get()
-
-                else:
-                    mot_right.disable()
-                    R_prev_en = R_en.get()
-            if R_eff.get() != R_prev_eff:
-                R_prev_dir = R_dir.get()  # update the direction to match the effort input
-                if R_eff.get() > 0:
-                    R_dir.put(1)
-                else:
-                    R_dir.put(0)
-                right_base_target = R_eff.get()
-                cl_ctrl_mot_right.set_target(right_base_target)
-                R_prev_eff = R_eff.get()  # store and update the effort
-            if (follower_on.get()):  # implement the speed adjustment from the line follower task
+            if R_en.get() > 0:
+                right_encoder.zero()
+                mot_right.enable()
+            else:
+                mot_right.disable()
+                R_prev_en = R_en.get()
+            right_base_target = R_lin_spd.get()
+            cl_ctrl_mot_right.set_target(right_base_target)
+            R_prev_eff = R_lin_spd.get()  # store and update the effort
+            if follower_on.get():  # implement the speed adjustment from the line follower task
                 follower_diff = line_follower_diff.get() / 2
                 cl_ctrl_mot_right.set_target(right_base_target + follower_diff)
-
-            t_print = cl_ctrl_mot_right.get_action(R_t_new, right_encoder.get_velocity())
-            # print(f"RIGHT SPEED: {t_print}")
-            mot_right.set_effort(t_print)
+            pwm_percent = cl_ctrl_mot_right.get_action(R_t_new, right_encoder.get_velocity()) #t_print is a pwm%
+            mot_right.set_effort(pwm_percent)
             R_pos.put(right_encoder.get_position())
             R_vel.put(right_encoder.get_velocity())
             R_time.put(ticks_diff(R_t_new, R_t_start))
-            # print(R_pos.get(), R_vel.get(), R_time.get())
         yield 1
 
 
@@ -708,14 +678,13 @@ if __name__ == "__main__":
                           name="Queue 0")
 
     # Create Share objects for inter-task communication
-    L_dir_share = task_share.Share('H', thread_protect=False, name="L dir")
-    L_eff_share = task_share.Share('f', thread_protect=False, name="L eff")
+    L_lin_spd = task_share.Share('f', thread_protect=False, name="L lin spd")
     L_en_share = task_share.Share('H', thread_protect=False, name="L en")
     L_pos_share = task_share.Share('f', thread_protect=False, name="L pos")
     L_vel_share = task_share.Share('f', thread_protect=False, name="L vel")
     L_time_share = task_share.Share('I', thread_protect=False, name="L time")
     R_dir_share = task_share.Share('H', thread_protect=False, name="R dir")
-    R_eff_share = task_share.Share('f', thread_protect=False, name="R eff")
+    R_lin_spd = task_share.Share('f', thread_protect=False, name="R lin spd")
     R_en_share = task_share.Share('H', thread_protect=False, name="R en")
     R_pos_share = task_share.Share('f', thread_protect=False, name="R pos")
     R_vel_share = task_share.Share('f', thread_protect=False, name="R vel")
@@ -745,33 +714,31 @@ if __name__ == "__main__":
     # debugging and set trace to False when it's not needed2
 
     task_left_ops = cotask.Task(left_ops, name="Left ops", priority=3, period=50,
-                                profile=True, trace=True, shares=(L_dir_share,
-                                                                  L_eff_share, L_en_share, L_pos_share, L_vel_share,
+                                profile=True, trace=True, shares=(L_lin_spd, L_en_share, L_pos_share, L_vel_share,
                                                                   L_time_share, wheel_diff, line_follow))
     task_right_ops = cotask.Task(right_ops, name="Right ops", priority=4, period=50,
-                                 profile=True, trace=True, shares=(R_dir_share,
-                                                                   R_eff_share, R_en_share, R_pos_share, R_vel_share,
+                                 profile=True, trace=True, shares=(R_lin_spd, R_en_share, R_pos_share, R_vel_share,
                                                                    R_time_share, wheel_diff, line_follow))
     # task_dumb_ui = cotask.Task(dumb_ui, name="Dumb UI", priority=1, period=10,
     #                             profile=True, trace=True, shares=(L_eff_share, R_eff_share))
 
     task_ui = cotask.Task(run_UI, name="UI", priority=0, period=60,
                           profile=True, trace=True,
-                          shares=(L_eff_share, L_en_share, R_eff_share, R_en_share, run, print_out))
+                          shares=(L_lin_spd, L_en_share, R_lin_spd, R_en_share, run, print_out))
 
     task_collect_data = cotask.Task(collect_data, name="Collect Data", priority=2, period=50,
                                     profile=True, trace=True, shares=(
-        R_eff_share, L_eff_share, R_pos_share, R_vel_share, R_time_share, L_pos_share, L_vel_share, L_time_share, run,
-        print_out))
+            R_lin_spd, L_lin_spd, R_pos_share, R_vel_share, R_time_share, L_pos_share, L_vel_share, L_time_share, run,
+            print_out))
 
     task_read_battery = cotask.Task(battery_read, name="Battery", priority=0, period=1000,
                                     profile=True, trace=True, shares=(bat_share, bat_flag))
     task_IR_sensor = cotask.Task(IR_sensor, name="IR sensor", priority=5, period=50,
                                  profile=True, trace=True,
-                                 shares=(calib_black, calib_white, line_follow, L_eff_share, R_eff_share, wheel_diff))
+                                 shares=(calib_black, calib_white, line_follow, L_lin_spd, R_lin_spd, wheel_diff))
     task_state_estimator = cotask.Task(IMU_OP, name="state estimator", priority=6, period=50,
                                        profile=True, trace=True, shares=(
-        L_pos_share, R_pos_share, L_eff_share, R_eff_share, L_vel_share, R_vel_share, yaw_angle_share, yaw_rate_share))
+            L_pos_share, R_pos_share, L_lin_spd, R_lin_spd, L_vel_share, R_vel_share, yaw_angle_share, yaw_rate_share))
 
     task_IMU_OP = cotask.Task(IMU_OP, name="IMU Op", priority=0, period=100, 
                               profile=True, trace=True, shares=(R_pos_share, L_pos_share, R_vel_share, L_vel_share))
@@ -786,7 +753,7 @@ if __name__ == "__main__":
     cotask.task_list.append(task_collect_data)
     cotask.task_list.append(task_read_battery)
     cotask.task_list.append(task_IR_sensor)
-    cotask.task_list.append(task_state_estimator)
+    # cotask.task_list.append(task_state_estimator)
 
     # Run the memory garbage collector to ensure memory is as defragmented as
     # possible before the real-time scheduler is started

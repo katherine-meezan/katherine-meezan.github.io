@@ -9,7 +9,7 @@ times = []
 data = []
 
 # ComPort = "/dev/tty.usbmodem2058397458562"   # For MacOS, will need to change if board is reflashed
-ComPort = "COM5" #COM13, COM5 for Katherine
+ComPort = "COM13" #COM13, COM5 for Katherine
 
 
 # If ComPort is different on Windows, add here, and then comment/uncomment which one to use
@@ -19,7 +19,7 @@ def read_data(ser):
     data = []
     while True:
         line = ser.readline().decode(errors="replace").strip()
-        if "MOTOR:" in line or "Number of data points:" in line or not line:  # or "MICROSEC" in line:
+        if "Euler" in line or "Yaw" in line or "Number of data points:" in line or not line:  # or "MICROSEC" in line:
             return data, line
         data.append(line)
 
@@ -41,29 +41,40 @@ def save_csv(filename, data_lines):
 
 with Serial(ComPort, baudrate=115_200, timeout=1) as ser:
     # ser.write(b"t\r\n")
+    # ser.write(b"r\r\n")
+    # ser.write(b"l\r\n")
+    #
+    # sleep(3)
+    #
+    # ser.write(b"e\r\n")
+    # ser.write(b"k\r\n")
+
     ser.write(b"r\r\n")
-    ser.write(b"l\r\n")
-    
+    ser.write(b"t\r\n")
     sleep(3)
     ser.write(b"z\r\n")
     
     
     while not ser.in_waiting: continue
-    
+
+    print("starting to read")
+    num_loops = 0
     while True:
+        num_loops += 1
         line = ser.readline().decode(errors="replace").strip()
         if not line:
             continue
-
+        print(line)
         if line.startswith("Euler"):
             print("Reading Euler Angle data...")
             angle_data, next_line = read_data(ser)
-            print("Finished reading Euler Angle data")
         if line.startswith("Yaw"):
             print("Reading Yaw rate  data...")
             yaw_data, _ = read_data(ser)
             break
-        
+    print(f"num loops: num_loops")
+
+print("finished reading data")
 with open("Euler_Angle.csv", 'w') as file:
     file.seek(0)
     file.truncate()

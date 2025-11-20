@@ -1,3 +1,4 @@
+
 import gc
 import pyb
 import cotask
@@ -206,7 +207,7 @@ def IMU_OP(shares):
                   0, 0, 1.0000, 70.5000,
                   0, 0, 0, 1.0000,
                   -0.2482, 0.2482, 0, 0]).reshape((4, 4))
-
+    
     state = 0  # Calibration Procedure/Load calibration values
     old_time = ticks_ms()
     while True:
@@ -214,6 +215,7 @@ def IMU_OP(shares):
             cal_file = "IMU_cal.txt"
             os_files = os.listdir()
             if cal_file in os_files:
+                uart.write("Calibrating")
                 IMU.changeOpMode(config_op_mode)
                 sleep_ms(20)
                 IMU.writeCalCoefficients(cal_file)
@@ -267,7 +269,7 @@ def IMU_OP(shares):
             # Create u* = u/y vector (vl, vr, sl, sr, psi, psi_dot)
             u_aug = np.concatenate((np.array([v_left, v_right]), y_measured))
     
-            old_time = ticks_ms
+            old_time = ticks_ms()
             x_hat_old[0] = L_vel_share.get()
             x_hat_old[1] = R_vel_share.get()
             x_hat_old[2] = 0  # Romi has not travelled any linear distance yet
@@ -276,8 +278,9 @@ def IMU_OP(shares):
         elif state == 2:
             # print("State 2")
             curr_time = ticks_ms()
+            
             if ticks_diff(curr_time, old_time) >= 50:
-                old_time = curr_time()
+                old_time = curr_time
                 # Run observer and update equations
                 x_hat_new = np.dot(A_d, x_hat_old) + np.dot(B_d, u_aug)
                 y_hat = np.dot(C, x_hat_old)
@@ -286,10 +289,11 @@ def IMU_OP(shares):
             y_measured[2] = IMU.readEulerAngles()[2]  # update yaw angle
             y_measured[3] = IMU.readAngularVelocity()[2]  # update yaw rate
             v_left = L_voltage_share.get() #pwm converted to V in ops tasks
-            v_right = R_voltage_share.get()
+            v_right = R_voltage_share.get() 
             u_aug = np.concatenate((np.array([v_left, v_right]), y_measured))
-            yaw_angle_share.put(y_measured[3])
-            yaw_rate_share.put(x_hat_new[3])
+            yaw_angle_share.put(y_measured[2])
+            yaw_rate_share.put(y_measured[3])
+            
             # update set points for motor controllers
             L_vel_share.put(x_hat_new[0])
             R_vel_share.put(x_hat_new[1])
@@ -507,6 +511,7 @@ def run_UI(shares):
                 state = 1
             elif char_in == "s":  # Run step response test, at whatever effort the right motor was last set to
                 uart.write("starting step reponse!______________")
+                
                 r_en = 0
                 l_en = 0
                 R_en.put(r_en)
@@ -790,8 +795,8 @@ if __name__ == "__main__":
                                        profile=True, trace=True, shares=(
             L_pos_share, R_pos_share, L_voltage_share, R_voltage_share, L_vel_share, R_vel_share, yaw_angle_share, yaw_rate_share))
 
-    # task_IMU_OP = cotask.Task(IMU_OP, name="IMU Op", priority=0, period=100, 
-    #                           profile=True, trace=True, shares=(L_pos_share, R_pos_share, L_voltage_share, R_voltage_share, L_vel_share, R_vel_share, yaw_angle_share, yaw_rate_share))
+    task_IMU_OP = cotask.Task(IMU_OP, name="IMU Op", priority=0, period=100, 
+                              profile=True, trace=True, shares=(L_pos_share, R_pos_share, L_voltage_share, R_voltage_share, L_vel_share, R_vel_share, yaw_angle_share, yaw_rate_share))
     # cotask.task_list.append(task1)
     # cotask.task_list.append(task2)
 
@@ -804,7 +809,7 @@ if __name__ == "__main__":
     cotask.task_list.append(task_read_battery)
     # cotask.task_list.append(task_IR_sensor)
     # cotask.task_list.append(task_state_estimator)
-    # cotask.task_list.append(task_IMU_OP)
+    cotask.task_list.append(task_IMU_OP)
 
     # Run the memory garbage collector to ensure memory is as defragmented as
     # possible before the real-time scheduler is started
@@ -825,5 +830,4 @@ if __name__ == "__main__":
     print('\n' + str(cotask.task_list))
     print(task_share.show_all())
     print('')
-
 

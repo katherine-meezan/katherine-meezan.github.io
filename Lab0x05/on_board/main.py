@@ -792,22 +792,22 @@ if __name__ == "__main__":
     # of memory after a while and quit. Therefore, use tracing only for
     # debugging and set trace to False when it's not needed2
 
-    task_left_ops = cotask.Task(left_ops, name="Left ops", priority=3, period=100,
+    task_left_ops = cotask.Task(left_ops, name="Left ops", priority=3, period=50,
                                 profile=True, trace=True, shares=(L_lin_spd, L_en_share, L_pos_share, L_vel_share,
                                                                   L_time_share, wheel_diff, line_follow,
                                                                   L_voltage_share))
-    task_right_ops = cotask.Task(right_ops, name="Right ops", priority=4, period=100,
+    task_right_ops = cotask.Task(right_ops, name="Right ops", priority=4, period=50,
                                  profile=True, trace=True, shares=(R_lin_spd, R_en_share, R_pos_share, R_vel_share,
                                                                    R_time_share, wheel_diff, line_follow,
                                                                    R_voltage_share))
     # task_dumb_ui = cotask.Task(dumb_ui, name="Dumb UI", priority=1, period=10,
     #                             profile=True, trace=True, shares=(L_eff_share, R_eff_share))
 
-    task_ui = cotask.Task(run_UI, name="UI", priority=1, period=100,
+    task_ui = cotask.Task(run_UI, name="UI", priority=1, period=50,
                           profile=True, trace=True,
                           shares=(L_lin_spd, L_en_share, R_lin_spd, R_en_share, run, print_out, time_start_share))
 
-    task_collect_data = cotask.Task(collect_data, name="Collect Data", priority=0, period=100,
+    task_collect_data = cotask.Task(collect_data, name="Collect Data", priority=0, period=50,
                                     profile=True, trace=True, shares=(
             R_lin_spd, L_lin_spd, R_pos_share, R_vel_share, R_time_share, L_pos_share, L_vel_share, L_time_share,
             yaw_angle_share, yaw_rate_share, IMU_time_share, dist_traveled_share, run,
@@ -818,7 +818,7 @@ if __name__ == "__main__":
     task_IR_sensor = cotask.Task(IR_sensor, name="IR sensor", priority=5, period=50,
                                  profile=True, trace=True,
                                  shares=(calib_black, calib_white, line_follow, L_lin_spd, R_lin_spd, wheel_diff))
-    task_state_estimator = cotask.Task(IMU_OP, name="state estimator", priority=2, period=100,
+    task_state_estimator = cotask.Task(IMU_OP, name="state estimator", priority=2, period=50,
                                        profile=True, trace=True, shares=(
             L_pos_share, R_pos_share, L_voltage_share, R_voltage_share, L_vel_share, R_vel_share, yaw_angle_share,
             yaw_rate_share, dist_traveled_share, IMU_time_share, time_start_share))

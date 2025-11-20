@@ -65,7 +65,7 @@ class CLMotorController():
         # To calculate error, first convert set point in mm/s to wheel deg/sec
         # Scale for battery droop
         raw_error = (self.target*self.K1 - new_state*self.K2) # error in WHEEL DEGREES/SEC
-        if raw_error<10000 and raw_error>-10000: # hard-coded method of ignoring faulty encoder reading spikes
+        if raw_error<5000 and raw_error>-5000: # hard-coded method of ignoring faulty encoder reading spikes
             self.error = raw_error
         else:
             self.error = 0

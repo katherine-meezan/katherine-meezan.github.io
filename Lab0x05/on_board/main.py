@@ -225,6 +225,8 @@ def IMU_OP(shares):
                 cal_status = IMU.retrieveCalStatus()
                 if cal_status[1] == cal_status[2] == cal_status[3] == 3:
                     print("IMU calibrated from text file")
+                    cal_data_bytes = IMU.retrieveCalCoefficients()
+                    print(cal_data_bytes)
                     print(cal_status)
                     state = 1
                 else:
@@ -256,7 +258,7 @@ def IMU_OP(shares):
             # y vector:
             y_measured[0] = L_pos_share.get()*.153  # in encoder counts, converted to mm
             y_measured[1] = R_pos_share.get()*.153  # in encoder counts, converted to mm
-            y_measured[2] = IMU.readEulerAngles()[2]  # update yaw angle (rad)
+            y_measured[2] = IMU.readEulerAngles()[0]  # update yaw angle (rad)
             y_measured[3] = IMU.readAngularVelocity()[2]  # update yaw rate (rad/s)
     
             # Psi = Sr - Sl/w (use encoder values)
@@ -286,12 +288,16 @@ def IMU_OP(shares):
                 y_hat = np.dot(C, x_hat_old)
             y_measured[0] = L_pos_share.get()*.153  # in encoder counts, converted to mm
             y_measured[1] = R_pos_share.get()*.153  # in encoder counts, converted to mm
-            y_measured[2] = IMU.readEulerAngles()[2]  # update yaw angle
+            y_measured[2] = IMU.readEulerAngles()[0]  # update yaw angle
             y_measured[3] = IMU.readAngularVelocity()[2]  # update yaw rate
             v_left = L_voltage_share.get() #pwm converted to V in ops tasks
             v_right = R_voltage_share.get() 
             u_aug = np.concatenate((np.array([v_left, v_right]), y_measured))
             yaw_angle_share.put(y_measured[2])
+            # print(f"left wheel s: {y_measured[0]}")
+            # print(f"Yaw Angles from IMU: {y_measured[2]}")
+            # print(f"Angular velocity: {y_measured[3]}")
+            # print(f"Yaw rate: {y_measured[3]}")
             yaw_rate_share.put(y_measured[3])
             
             # update set points for motor controllers
@@ -339,7 +345,7 @@ def left_ops(shares):
             L_t_new = ticks_us()
             # global variables are used to store the internal data/state of the task
             if L_en.get() > 0:
-                left_encoder.zero()
+                # left_encoder.zero()
                 mot_left.enable()
             else:
                 mot_left.disable()
@@ -354,7 +360,7 @@ def left_ops(shares):
             pwm_percent = cl_ctrl_mot_left.get_action(L_t_new, left_encoder.get_velocity())
             mot_left.set_effort(pwm_percent)
             # print(f"left target speed: {left_target}")
-            print(f"PWM percent: {pwm_percent}")
+            # print(f"PWM percent: {pwm_percent}")
             L_voltage.put(pwm_percent*4.5/100) #pwm percent sent to motor
             L_pos.put(left_encoder.get_position()) # counts
             L_vel.put(left_encoder.get_velocity()) # counts
@@ -382,7 +388,7 @@ def right_ops(shares):
             right_encoder.update()
             R_t_new = ticks_us()
             if R_en.get() > 0:
-                right_encoder.zero()
+                # right_encoder.zero()
                 mot_right.enable()
             else:
                 mot_right.disable()
@@ -494,8 +500,8 @@ def run_UI(shares):
                 l_en = 0
                 R_en.put(r_en)
                 L_en.put(l_en)
-                l_eff = 1
-                r_eff = 1
+                l_eff = 10
+                r_eff = -10
                 L_lin_speed.put(l_eff)
                 R_lin_speed.put(r_eff)
                 # state = 1
@@ -791,12 +797,11 @@ if __name__ == "__main__":
     task_IR_sensor = cotask.Task(IR_sensor, name="IR sensor", priority=5, period=50,
                                  profile=True, trace=True,
                                  shares=(calib_black, calib_white, line_follow, L_lin_spd, R_lin_spd, wheel_diff))
-    task_state_estimator = cotask.Task(IMU_OP, name="state estimator", priority=2, period=500,
+    task_state_estimator = cotask.Task(IMU_OP, name="state estimator", priority=2, period=200,
                                        profile=True, trace=True, shares=(
             L_pos_share, R_pos_share, L_voltage_share, R_voltage_share, L_vel_share, R_vel_share, yaw_angle_share, yaw_rate_share))
 
-    task_IMU_OP = cotask.Task(IMU_OP, name="IMU Op", priority=0, period=100, 
-                              profile=True, trace=True, shares=(L_pos_share, R_pos_share, L_voltage_share, R_voltage_share, L_vel_share, R_vel_share, yaw_angle_share, yaw_rate_share))
+   
     # cotask.task_list.append(task1)
     # cotask.task_list.append(task2)
 
@@ -808,8 +813,8 @@ if __name__ == "__main__":
     cotask.task_list.append(task_collect_data)
     cotask.task_list.append(task_read_battery)
     # cotask.task_list.append(task_IR_sensor)
-    # cotask.task_list.append(task_state_estimator)
-    cotask.task_list.append(task_IMU_OP)
+    cotask.task_list.append(task_state_estimator)
+    
 
     # Run the memory garbage collector to ensure memory is as defragmented as
     # possible before the real-time scheduler is started

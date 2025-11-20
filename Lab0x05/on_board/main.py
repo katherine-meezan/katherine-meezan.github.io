@@ -440,14 +440,14 @@ Motor step response test:
 
 def run_UI(shares):
     L_lin_speed, L_en, R_lin_speed, R_en, Run, Print_out = shares
-    global state, l_dir, l_eff, l_en, r_dir, r_eff, r_en, test_start_time
+    global state, l_lin_spd, l_en, r_dir, r_lin_spd, r_en, test_start_time
     state = 0
     while True:
         if state == 0:  # init state
             # Init messenger variables
-            l_eff = 0
+            l_lin_spd = 0
             l_en = 1
-            r_eff = 0
+            r_lin_spd = 0
             r_en = 1
             test_start_time = 0
             test_end_time = 0
@@ -462,12 +462,12 @@ def run_UI(shares):
                 state = 2
         elif state == 2:  # decode character
             if char_in == "r":
-                r_eff += 2
-                R_lin_speed.put(r_eff)
+                r_lin_spd += 2
+                R_lin_speed.put(r_lin_spd)
                 state = 1
             elif char_in == "e":
-                r_eff -= 10
-                R_lin_speed.put(r_eff)
+                r_lin_spd -= 10
+                R_lin_speed.put(r_lin_spd)
                 state = 1
             elif char_in == "c":
                 # print(r_en)
@@ -478,12 +478,12 @@ def run_UI(shares):
                 R_en.put(r_en)
                 state = 1
             elif char_in == "l":
-                l_eff += 2
-                L_lin_speed.put(l_eff)
+                l_lin_spd += 2
+                L_lin_speed.put(l_lin_spd)
                 state = 1
             elif char_in == "k":
-                l_eff -= 10
-                L_lin_speed.put(l_eff)
+                l_lin_spd -= 10
+                L_lin_speed.put(l_lin_spd)
                 state = 1
             elif char_in == "n":
                 if l_en == 1:
@@ -493,7 +493,7 @@ def run_UI(shares):
                 L_en.put(l_en)
                 state = 1
             elif char_in == "p":
-                uart.write("Left motor effort: ", l_eff, "\nRight motor effort: ", r_eff)
+                uart.write("Left motor effort: ", l_lin_spd, "\nRight motor effort: ", r_lin_spd)
                 state = 1
             elif char_in == "b":
                 print(state)
@@ -504,10 +504,10 @@ def run_UI(shares):
                 l_en = 0
                 R_en.put(r_en)
                 L_en.put(l_en)
-                l_eff = 3
-                r_eff = 3
-                L_lin_speed.put(l_eff)
-                R_lin_speed.put(r_eff)
+                l_lin_spd = 3
+                r_lin_spd = 3
+                L_lin_speed.put(l_lin_spd)
+                R_lin_speed.put(r_lin_spd)
                 # state = 1
                 Run.put(1)  # Indicates start to data collection
                 test_start_time = ticks_ms()  # Record start time of test
@@ -526,8 +526,8 @@ def run_UI(shares):
                 l_en = 0
                 R_en.put(r_en)
                 L_en.put(l_en)
-                l_eff = r_eff
-                L_lin_speed.put(l_eff)
+                l_lin_spd = r_lin_spd
+                L_lin_speed.put(l_lin_spd)
                 Run.put(1)  # Indicates start to data collection
                 test_start_time = ticks_ms()  # Record start time of test
                 state = 3
@@ -541,10 +541,10 @@ def run_UI(shares):
             elif char_in == "y":
                 l_en = 1
                 r_en = 1
-                r_eff = 2
-                l_eff = 2
-                R_lin_speed.put(r_eff)
-                L_lin_speed.put(l_eff)
+                r_lin_spd = 2
+                l_lin_spd = 2
+                R_lin_speed.put(r_lin_spd)
+                L_lin_speed.put(l_lin_spd)
                 L_en.put(l_en)
                 R_en.put(r_en)
 

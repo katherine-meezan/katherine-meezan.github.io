@@ -182,7 +182,8 @@ IMU = IMU_I2C(i2c, IMU_addr)  # Create IMU_I2C object
 
 
 def IMU_OP(shares):
-    L_pos_share, R_pos_share, L_voltage_share, R_voltage_share, L_vel_share, R_vel_share, yaw_angle_share, yaw_rate_share, dist_traveled_share, IMU_time_share = shares
+    L_pos_share, R_pos_share, L_voltage_share, R_voltage_share, L_vel_share, R_vel_share,\
+    yaw_angle_share, yaw_rate_share, dist_traveled_share, IMU_time_share, test_start_time = shares
     heading_offset = 0
     robot_width = 141  # mm
     wheel_radius = 35  # mm
@@ -208,8 +209,7 @@ def IMU_OP(shares):
                   -0.2482, 0.2482, 0, 0]).reshape((4, 4))
 
     state = 0  # Calibration Procedure/Load calibration values
-    old_time = ticks_ms()
-    time_start = ticks_us()
+    old_time = ticks_us()
     while True:
         if state == 0:
             cal_file = "IMU_cal.txt"
@@ -271,7 +271,7 @@ def IMU_OP(shares):
             # Create u* = u/y vector (vl, vr, sl, sr, psi, psi_dot)
             u_aug = np.concatenate((np.array([v_left, v_right]), y_measured))
 
-            old_time = ticks_ms()
+            old_time = ticks_us()
             x_hat_old[0] = L_vel_share.get()
             x_hat_old[1] = R_vel_share.get()
             x_hat_old[2] = 0  # Romi has not travelled any linear distance yet
@@ -279,8 +279,8 @@ def IMU_OP(shares):
             state = 2
         elif state == 2:
             # print("State 2")
-            curr_time = ticks_ms()
-            if ticks_diff(curr_time, old_time) >= 50:
+            curr_time = ticks_us()
+            if ticks_diff(curr_time, old_time) >= 50000:
                 old_time = curr_time
                 new_time_meas = ticks_us()
                 # Run observer and update equations
@@ -289,7 +289,7 @@ def IMU_OP(shares):
                 dist_traveled = x_hat_new[2]
                 print(f"distance: {dist_traveled}")
                 dist_traveled_share.put(dist_traveled)
-                IMU_time_share.put(ticks_us())
+                IMU_time_share.put(ticks_diff(new_time_meas, test_start_time.get()))
             y_measured[0] = L_pos_share.get() * .153  # in encoder counts, converted to mm
             y_measured[1] = R_pos_share.get() * .153  # in encoder counts, converted to mm
             y_measured[2] = IMU.readEulerAngles()[0]  # update yaw angle
@@ -439,8 +439,8 @@ Motor step response test:
 
 
 def run_UI(shares):
-    L_lin_speed, L_en, R_lin_speed, R_en, Run, Print_out = shares
-    global state, l_dir, l_eff, l_en, r_dir, r_eff, r_en, test_start_time
+    L_lin_speed, L_en, R_lin_speed, R_en, Run, Print_out, test_start_time_share = shares
+    
     state = 0
     while True:
         if state == 0:  # init state
@@ -511,6 +511,8 @@ def run_UI(shares):
                 # state = 1
                 Run.put(1)  # Indicates start to data collection
                 test_start_time = ticks_ms()  # Record start time of test
+                data_collect_comp_time = ticks_us()
+                test_start_time_share.put(data_collect_comp_time)
                 state = 3
 
             elif char_in == "z":
@@ -530,6 +532,7 @@ def run_UI(shares):
                 L_lin_speed.put(l_eff)
                 Run.put(1)  # Indicates start to data collection
                 test_start_time = ticks_ms()  # Record start time of test
+                
                 state = 3
             elif char_in == "i":  # run black calibration sequence for IR sensor
                 calib_black.put(1)
@@ -774,6 +777,7 @@ if __name__ == "__main__":
     yaw_rate_share = task_share.Share('f', thread_protect=False, name="yaw rate")
     dist_traveled_share = task_share.Share('f', thread_protect=False, name="Distance traveled")
     IMU_time_share = task_share.Share('I', thread_protect=False, name="IMU time")
+    time_start_share = task_share.Share('I', thread_protect=False, name="time start")
     
 
     # R_pos_queue = task_share.Queue('f', 100, name="R pos")
@@ -802,7 +806,7 @@ if __name__ == "__main__":
 
     task_ui = cotask.Task(run_UI, name="UI", priority=1, period=100,
                           profile=True, trace=True,
-                          shares=(L_lin_spd, L_en_share, R_lin_spd, R_en_share, run, print_out))
+                          shares=(L_lin_spd, L_en_share, R_lin_spd, R_en_share, run, print_out, time_start_share))
 
     task_collect_data = cotask.Task(collect_data, name="Collect Data", priority=0, period=100,
                                     profile=True, trace=True, shares=(
@@ -818,7 +822,7 @@ if __name__ == "__main__":
     task_state_estimator = cotask.Task(IMU_OP, name="state estimator", priority=2, period=100,
                                        profile=True, trace=True, shares=(
             L_pos_share, R_pos_share, L_voltage_share, R_voltage_share, L_vel_share, R_vel_share, yaw_angle_share,
-            yaw_rate_share, dist_traveled_share, IMU_time_share))
+            yaw_rate_share, dist_traveled_share, IMU_time_share, time_start_share))
 
     # cotask.task_list.append(task1)
     # cotask.task_list.append(task2)

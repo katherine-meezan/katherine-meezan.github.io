@@ -10,8 +10,8 @@ class Encoder:
         self.position = 0  # Total accumulated position of the encoder
         self.prev_count = 0  # Counter value from the most recent update
         self.delta = 0  # Change in count between last two updates
-        self.dt = 1.0  # Amount of time between last two updates
-        self.tim = tim
+        self.dt = 1.0  # Amount of time between last two updates; measured in seconds
+        self.tim = tim # timer object
         self.ticks_old = ticks_us()
         self.enc_count_old = self.tim.counter()
         self.comp = (tim.period() + 1) // 2  # comparator equal to half of AR + 1
@@ -22,18 +22,29 @@ class Encoder:
         ticks_new = ticks_us()
         enc_count_new = self.tim.counter()
         
-        dt = ticks_diff(ticks_new, self.ticks_old)
+        
+        # Calculates elapsed time in seconds
         self.dt = ticks_diff(ticks_new, self.ticks_old)/1000000  # retrieves delta
-        # perform overflow correction calculation
-        self.delta = (enc_count_new - self.enc_count_old)
-        if (self.delta <= self.comp) and (self.delta >= -1 * self.comp):
-            self.position += self.delta
-        elif self.delta > self.comp:
-            self.position += self.delta - 2 * self.comp
-        else:
-            self.position += self.delta + 2 * self.comp
-        self.ticks_old = ticks_new
-        self.enc_count_old = enc_count_new
+        
+        # How much encoder has turned, raw difference
+        raw_diff = enc_count_new - self.enc_count_old
+        
+        # check for overflow and perform overflow correction calculation
+        if raw_diff > self.comp:
+            raw_diff -= (self.comp*2)
+            
+        elif raw_diff < -self.comp:
+            raw_diff += (self.comp*2)
+        
+        # Store corrected difference
+        self.delta = raw_diff
+        
+        # Update position; in encoder counts
+        self.position += raw_diff
+        
+        # Update state for next update
+        self.ticks_old = ticks_new # microseconds
+        self.enc_count_old = enc_count_new # Encoder counts
         pass
 
     def get_position(self):
@@ -51,7 +62,7 @@ class Encoder:
            to measure with respect to the new zero position'''
         self.position = 0
         self.enc_count_old = self.tim.counter()
-        # self.delta = 0
+        self.delta = 0
         # self.ticks_new = ticks_us()
         # self.dt = 0
         # pass

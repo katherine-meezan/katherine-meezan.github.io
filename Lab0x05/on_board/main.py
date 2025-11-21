@@ -47,14 +47,14 @@ R_t_UI = 0
 
 PA8 = Pin(Pin.cpu.A8, mode=Pin.OUT_PP)  # Timer1_Channel1: Encoder A left
 PA9 = Pin(Pin.cpu.A9, mode=Pin.OUT_PP)  # Timer1_Channel2: Encoder B left
-timLeft = Timer(1, freq=100)
+timLeft = Timer(1, prescaler=0, period=0xFFFF)
 ch1Left = timLeft.channel(1, Timer.ENC_AB, pin=PA8)
 ch2Left = timLeft.channel(2, Timer.ENC_AB, pin=PA9)
 left_encoder = Encoder(timLeft, ch1Left, ch2Left)
 
 PB4 = Pin(Pin.cpu.B4, mode=Pin.OUT_PP)  # Timer3_Channel1: Encoder A right
 PB5 = Pin(Pin.cpu.B5, mode=Pin.OUT_PP)  # Timer3_Channel2: Encoder B right
-timRight = Timer(3, freq=100)
+timRight = Timer(3, prescaler=0, period=0xFFFF)
 ch1Right = timRight.channel(1, Timer.ENC_AB, pin=PB4)
 ch2Right = timRight.channel(2, Timer.ENC_AB, pin=PB5)
 right_encoder = Encoder(timRight, ch1Right, ch2Right)
@@ -67,9 +67,9 @@ BAT_READ = pyb.ADC(PC2)
 
 # CONTROLLER SETPOINT IS IN MM/S
 cl_ctrl_mot_left = CLMotorController(0, 0, 0, Kp=.5, Ki=5, min_sat=-100, max_sat=100, t_init=0,
-                                     v_nom=2.878, threshold=1.439, K3=.346)
+                                     v_nom=2.878, threshold=1.439, K3=.0209)
 cl_ctrl_mot_right = CLMotorController(0, 0, 0, Kp=.5, Ki=5, min_sat=-100, max_sat=100, t_init=0,
-                                      v_nom=2.878, threshold=1.439, K3=.357)
+                                      v_nom=2.878, threshold=1.439, K3=.0216)
 
 ir_ch1 = IR_sensor(Pin(Pin.cpu.C3, mode=Pin.ANALOG))
 ir_ch3 = IR_sensor(Pin(Pin.cpu.A4, mode=Pin.ANALOG))
@@ -337,6 +337,7 @@ def left_ops(shares):
     global L_prev_dir, L_prev_eff, L_prev_en, L_t_start
     # State 0: init
     while True:
+        gc.collect()  # Run garbage collector so that it runs regularly
         if state == 0:  # initialize shares and vars
             mot_left.enable()
             left_encoder.zero()
@@ -503,8 +504,8 @@ def run_UI(shares):
                 l_en = 0
                 R_en.put(r_en)
                 L_en.put(l_en)
-                l_lin_spd = 3
-                r_lin_spd = 3
+                l_lin_spd = 50
+                r_lin_spd = 50
                 L_lin_speed.put(l_lin_spd)
                 R_lin_speed.put(r_lin_spd)
                 # state = 1
@@ -734,7 +735,7 @@ def battery_read(shares):
             low_bat_flag.put(0)
         # print("END BATTERY TASK")
         # print(f"Battery task: {battery.get()}, {low_bat_flag.get()}")
-        gc.collect()  # Run garbage collector in battery task so that it runs regularly
+        # gc.collect()  # Run garbage collector in battery task so that it runs regularly
         yield 0
 
 
@@ -834,7 +835,7 @@ if __name__ == "__main__":
     cotask.task_list.append(task_collect_data)
     cotask.task_list.append(task_read_battery)
     # cotask.task_list.append(task_IR_sensor)
-    cotask.task_list.append(task_state_estimator)
+    # cotask.task_list.append(task_state_estimator)
 
     # Run the memory garbage collector to ensure memory is as defragmented as
     # possible before the real-time scheduler is started

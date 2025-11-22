@@ -287,14 +287,12 @@ def IMU_OP(shares):
             # print(f"estimator distance: {dist_traveled}")
             dist_traveled_share.put(dist_traveled)
             IMU_time_share.put(ticks_diff(new_time_meas, test_start_time.get()))
-            y_measured[0] = L_pos_share.get() * .153  # in encoder counts, converted to mm
-            y_measured[1] = R_pos_share.get() * .153  # in encoder counts, converted to mm
-            y_measured[2] = IMU.readEulerAngles()[0]  # update yaw angle
-            y_measured[3] = IMU.readAngularVelocity()[2]  # update yaw rate
+           
             v_left = L_voltage_share.get()  # pwm converted to V in ops tasks
             v_right = R_voltage_share.get()
             u_aug = np.concatenate((np.array([v_left, v_right]), y_measured))
-            yaw_angle_share.put(y_measured[2])
+           
+            yaw_rate_share.put(u_aug[5])
             print(f"left pos share: {y_measured[0]}, right pos share: {y_measured[1]}, estimator left distance: {dist_traveled}")
             # print(f"left wheel s: {y_measured[0]}")
             # print(f"Yaw Angles from IMU: {y_measured[2]}")
@@ -303,8 +301,9 @@ def IMU_OP(shares):
             yaw_rate_share.put(y_measured[3])
             # print(f"U_AUG: {u_aug}")
             # update set points for motor controllers
-            L_vel_share.put(x_hat_new[0])
-            R_vel_share.put(x_hat_new[1])
+            # Setpoint for motors is defined in mm/s, x_hat is rotational speed in rad/s
+            L_vel_share.put(x_hat_new[0]*35) # rad/s converted to mm/s 
+            R_vel_share.put(x_hat_new[1]*35) # rad/s converted to mm/s
             state = 2
         yield state
 

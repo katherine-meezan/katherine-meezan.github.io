@@ -22,7 +22,7 @@ Created on Thu Oct 23 09:23:36 2025
 from time import ticks_diff
 class CLMotorController():
     def __init__(self, target, old_ticks, old_state, Kp=1, Ki=1, min_sat=-100, max_sat=100, t_init=0,
-                 v_nom=5.0, threshold=4.0, K3=0.61):
+                 v_nom=9.0, threshold=5.0, K3=0.61):
         # super().__init__(target, old_ticks, old_state, Kp, Ki, min_sat, max_sat, t_init)
         self.target = target
         self.old_ticks = old_ticks

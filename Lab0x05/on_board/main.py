@@ -67,9 +67,9 @@ BAT_READ = pyb.ADC(PC2)
 
 # CONTROLLER SETPOINT IS IN MM/S
 cl_ctrl_mot_left = CLMotorController(0, 0, 0, Kp=.5, Ki=5, min_sat=-100, max_sat=100, t_init=0,
-                                     v_nom=2.878, threshold=1.439, K3=.0209)
+                                     v_nom=9, threshold=5, K3=.0209)
 cl_ctrl_mot_right = CLMotorController(0, 0, 0, Kp=.5, Ki=5, min_sat=-100, max_sat=100, t_init=0,
-                                      v_nom=2.878, threshold=1.439, K3=.0216)
+                                      v_nom=9, threshold=5, K3=.0216)
 
 ir_ch1 = IR_sensor(Pin(Pin.cpu.C3, mode=Pin.ANALOG))
 ir_ch3 = IR_sensor(Pin(Pin.cpu.A4, mode=Pin.ANALOG))
@@ -268,7 +268,6 @@ def IMU_OP(shares):
             v_right = R_voltage_share.get()
             # Create u* = u/y vector (vl, vr, sl, sr, psi, psi_dot)
             u_aug = np.concatenate((np.array([v_left, v_right]), y_measured))
-
             old_time = ticks_us()
             x_hat_old[0] = L_vel_share.get() / 35  # converted from mm/s to radians per second
             x_hat_old[1] = R_vel_share.get() / 35  # converted from mm/s to radians per second
@@ -281,7 +280,7 @@ def IMU_OP(shares):
             old_time = curr_time
             new_time_meas = ticks_us()
             # Run observer and update equations
-            print(f"LINE 277{x_hat_new}")
+            # print(f"LINE 283{x_hat_new}")
             x_hat_new = np.dot(A_d, x_hat_old) + np.dot(B_d, u_aug)
             y_hat = np.dot(C, x_hat_old)
             dist_traveled = x_hat_new[2]
@@ -302,7 +301,7 @@ def IMU_OP(shares):
             # print(f"Angular velocity: {y_measured[3]}")
             # print(f"Yaw rate: {y_measured[3]}")
             yaw_rate_share.put(y_measured[3])
-
+            # print(f"U_AUG: {u_aug}")
             # update set points for motor controllers
             L_vel_share.put(x_hat_new[0])
             R_vel_share.put(x_hat_new[1])
@@ -365,7 +364,7 @@ def left_ops(shares):
             mot_left.set_effort(pwm_percent)
             # print(f"left target speed: {left_target}")
             # print(f"PWM percent: {pwm_percent}")
-            L_voltage.put(pwm_percent * 4.5 / 100)  # pwm percent sent to motor
+            L_voltage.put(pwm_percent * 9 / 100)  # pwm percent sent to motor
             L_pos.put(left_encoder.get_position())  # counts
             L_vel.put(left_encoder.get_velocity())  # counts
             L_time.put(ticks_diff(L_t_new, L_t_start))
@@ -405,7 +404,7 @@ def right_ops(shares):
                 cl_ctrl_mot_right.set_target(right_base_target + follower_diff)
             pwm_percent = cl_ctrl_mot_right.get_action(R_t_new, right_encoder.get_velocity())  # t_print is a pwm%
             mot_right.set_effort(pwm_percent)
-            R_voltage.put(pwm_percent * 4.5 / 100)  # voltage input to motor
+            R_voltage.put(pwm_percent * 9 / 100)  # voltage input to motor
             R_pos.put(right_encoder.get_position())
             R_vel.put(right_encoder.get_velocity())
             R_time.put(ticks_diff(R_t_new, R_t_start))
@@ -723,7 +722,8 @@ def battery_read(shares):
     while True:
         # print("BATTERY TASK")
         battery, low_bat_flag = shares
-        battery_level = BAT_READ.read() * 3.3 / 4095  # CONVERT TO VOLTAGE
+        battery_level = BAT_READ.read() * 3.3 / 4095  # CONVERT TO VOLTAGE READ BY THE ADC
+        battery_level = battery_level * 14.7/4.7 # CONVERT TO ACTUAL BATTERY AMOUNT USING RESISTOR VALUES IN VOLTAGE DIVIDER
         battery.put(battery_level)
         cl_ctrl_mot_left.set_battery(battery_level)
         cl_ctrl_mot_right.set_battery(battery_level)

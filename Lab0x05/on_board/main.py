@@ -196,9 +196,9 @@ def IMU_OP(shares):
     y_measured = np.array(np.zeros(4).reshape(4, ))
     y_hat = np.array(np.zeros(4).reshape(4, ))
     A_d = np.array(
-        [0.652334,0.284454,0.110621,0.000000,0.284454,0.652334,0.110621,-0.000000,0.162545,0.162545,0.431091,-0.000000,-0.000000,-0.000000,0.000000,1.000000]).reshape((4, 4)).transpose()
+        [0.50,0.06,0.01,0.000000,0.06,0.50,0.01,0.000000,0.02,0.02,0.98,0.000000,0.000000,0.000000,0.000000,1.000000]).reshape((4, 4)).transpose()
     B_d = np.array([
-        0.226138,0.046932,0.018251,0.000000,0.046932,0.226138,0.018251,-0.000000,-0.081273,-0.081273,0.284454,0.000000,-0.081273,-0.081273,0.284454,0.000000,-0.000000,0.000000,-0.000000,0.000000,-1.145944,1.145944,0.000000,0.010000]).reshape((6, 4)).transpose()
+        0.18,0.02,0.000000,0.000000,0.02,0.18,0.000000,0.000000,0.000000,0.000000,0.45,0.000000,0.000000,0.000000,0.45,0.000000,0.000000,0.000000,0.000000,0.95,0.000000,0.000000,0.000000,0.050000]).reshape((6, 4)).transpose()
     B_d[3,5] = 0
     B_d[3, 4] = 1
     C = np.array(
@@ -267,6 +267,8 @@ def IMU_OP(shares):
             # Create u* = u/y vector (vl, vr, sl, sr, psi, psi_dot)
             u_aug = np.concatenate((np.array([v_left, v_right]), y_measured))
             old_time = ticks_us()
+            print(L_vel_share.get())
+            print(R_vel_share.get())
             x_hat_old[0] = L_vel_share.get() / 35  # converted from mm/s to radians per second
             x_hat_old[1] = R_vel_share.get() / 35  # converted from mm/s to radians per second
             x_hat_old[2] = 0  # Romi has not travelled any linear distance yet
@@ -279,7 +281,8 @@ def IMU_OP(shares):
             new_time_meas = ticks_us()
             # Run observer and update equations
             # print(f"LINE 283{x_hat_new}")
-            x_hat_new = np.dot(A_d, x_hat_old) + np.dot(B_d, u_aug)
+            # x_hat_new = np.dot(A_d, x_hat_old) + np.dot(B_d, u_aug)
+            x_hat_new = np.dot(B_d, u_aug)
             y_hat = np.dot(C, x_hat_old)
             dist_traveled = x_hat_new[2]
             # print(f"estimator distance: {dist_traveled}")
@@ -300,6 +303,9 @@ def IMU_OP(shares):
             # print(f"Yaw rate: {y_measured[3]}")
             yaw_rate_share.put(y_measured[3])
             # print(f"U_AUG: {u_aug}")
+            print(L_pos_share.get())
+            print(R_pos_share.get())
+            
             print(f"LINE 306 {x_hat_new}")
             # update set points for motor controllers
             L_vel_share.put(x_hat_new[0])
@@ -501,8 +507,8 @@ def run_UI(shares):
                 l_en = 0
                 R_en.put(r_en)
                 L_en.put(l_en)
-                l_lin_spd = 128.54
-                r_lin_spd = 80
+                l_lin_spd = 0
+                r_lin_spd = 100
                 L_lin_speed.put(l_lin_spd)
                 R_lin_speed.put(r_lin_spd)
                 # state = 1
@@ -566,7 +572,7 @@ def run_UI(shares):
         elif state == 5:  # Stop collecting data, set flags for data collection task
             # print("I made it to state 3!")
             # print("Now:", ticks_ms(), "diff:", ticks_diff(ticks_ms(), test_start_time))
-            if ticks_diff(ticks_ms(), test_start_time) >= 18400:  # stops test after ~ 2.5 seconds
+            if ticks_diff(ticks_ms(), test_start_time) >= 3000:  # stops test after ~ 2.5 seconds
                 # print("state 3 exit")
                 r_en = 0
                 l_en = 0
@@ -854,4 +860,6 @@ if __name__ == "__main__":
     print('\n' + str(cotask.task_list))
     print(task_share.show_all())
     print('')
+
+
 

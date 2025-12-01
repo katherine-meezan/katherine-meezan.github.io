@@ -9,7 +9,7 @@ times = []
 data = []
 
 # ComPort = "/dev/tty.usbmodem2058397458562"   # For MacOS, will need to change if board is reflashed
-ComPort = "COM13" #COM13, COM5 for Katherine
+ComPort = "COM5" #COM13, COM5 for Katherine
 
 
 # If ComPort is different on Windows, add here, and then comment/uncomment which one to use

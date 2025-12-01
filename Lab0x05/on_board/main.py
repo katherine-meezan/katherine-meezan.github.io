@@ -195,14 +195,22 @@ def IMU_OP(shares):
     u_aug = np.array(np.zeros(6).reshape(6, ))
     y_measured = np.array(np.zeros(4).reshape(4, ))
     y_hat = np.array(np.zeros(4).reshape(4, ))
+    # A_d = np.array(
+    #     [0.50,0.06,0.01,0.000000,0.06,0.50,0.01,0.000000,0.02,0.02,0.98,0.000000,0.000000,0.000000,0.000000,1.000000]).reshape((4, 4)).transpose()
     A_d = np.array(
-        [0.50,0.06,0.01,0.000000,0.06,0.50,0.01,0.000000,0.02,0.02,0.98,0.000000,0.000000,0.000000,0.000000,1.000000]).reshape((4, 4)).transpose()
+        [0.499445,0.499445,0.001942,0.002727,0.499445,0.499445,0.001942,-0.002727,0.285397,0.285397,0.001110,-0.000000,-0.000000,-0.000000,0.000000,1.000000]).reshape((4, 4)).transpose()
+    
+    # B_d = np.array([
+    #     0.18,0.02,0.000000,0.000000,0.02,0.18,0.000000,0.000000,0.000000,0.000000,0.45,0.000000,0.000000,0.000000,0.45,0.000000,0.000000,0.000000,0.000000,0.95,0.000000,0.000000,0.000000,0.050000]).reshape((6, 4)).transpose()
+    # B_d[3,5] = 0
+    # B_d[3, 4] = 1
     B_d = np.array([
-        0.18,0.02,0.000000,0.000000,0.02,0.18,0.000000,0.000000,0.000000,0.000000,0.45,0.000000,0.000000,0.000000,0.45,0.000000,0.000000,0.000000,0.000000,0.95,0.000000,0.000000,0.000000,0.050000]).reshape((6, 4)).transpose()
-    B_d[3,5] = 0
-    B_d[3, 4] = 1
+    0.143168,0.140021,0.000545,0.000765,0.140021,0.143168,0.000545,-0.000765,-0.142699,-0.142699,0.499445,
+       0.000000,-0.142699,-0.142699,0.499445,0.000000,-0.000000,0.000000,
+       -0.000000,0.000000,-2.012050,2.012050,0.000000,0.022074]).reshape((6, 4)).transpose()
     C = np.array(
-        [0.000000,0.000000,0.000000,-0.248227,0.000000,0.000000,0.000000,0.248227,1.000000,1.000000,0.000000,0.000000,-70.500000,70.500000,1.000000,0.000000]).reshape((4, 4)).transpose()
+        [0.000000,0.000000,0.000000,-0.248227,0.000000,0.000000,0.000000,0.248227,
+        1.000000,1.000000,0.000000,0.000000,-70.500000,70.500000,1.000000,0.000000]).reshape((4, 4)).transpose()
 
     state = 0  # Calibration Procedure/Load calibration values
     old_time = ticks_us()
@@ -281,8 +289,8 @@ def IMU_OP(shares):
             new_time_meas = ticks_us()
             # Run observer and update equations
             # print(f"LINE 283{x_hat_new}")
-            # x_hat_new = np.dot(A_d, x_hat_old) + np.dot(B_d, u_aug)
-            x_hat_new = np.dot(B_d, u_aug)
+            x_hat_new = np.dot(A_d, x_hat_old) + np.dot(B_d, u_aug)
+            # x_hat_new = np.dot(B_d, u_aug)
             y_hat = np.dot(C, x_hat_old)
             dist_traveled = x_hat_new[2]
             # print(f"estimator distance: {dist_traveled}")
@@ -296,17 +304,17 @@ def IMU_OP(shares):
             v_right = R_voltage_share.get()
             u_aug = np.concatenate((np.array([v_left, v_right]), y_measured))
             yaw_angle_share.put(y_measured[2])
-            # print(f"left pos share: {y_measured[0]}, right pos share: {y_measured[1]}, estimator left distance: {dist_traveled}")
+            print(f"left pos share: {y_measured[0]}, right pos share: {y_measured[1]}, estimator left distance: {dist_traveled}")
             # print(f"left wheel s: {y_measured[0]}")
             # print(f"Yaw Angles from IMU: {y_measured[2]}")
             # print(f"Angular velocity: {y_measured[3]}")
             # print(f"Yaw rate: {y_measured[3]}")
             yaw_rate_share.put(y_measured[3])
             # print(f"U_AUG: {u_aug}")
-            print(L_pos_share.get())
-            print(R_pos_share.get())
+            # print(L_pos_share.get())
+            # print(R_pos_share.get())
             
-            print(f"LINE 306 {x_hat_new}")
+            # print(f"LINE 306 {x_hat_new}")
             # update set points for motor controllers
             L_vel_share.put(x_hat_new[0])
             R_vel_share.put(x_hat_new[1])
@@ -507,7 +515,7 @@ def run_UI(shares):
                 l_en = 0
                 R_en.put(r_en)
                 L_en.put(l_en)
-                l_lin_spd = 0
+                l_lin_spd = 100
                 r_lin_spd = 100
                 L_lin_speed.put(l_lin_spd)
                 R_lin_speed.put(r_lin_spd)

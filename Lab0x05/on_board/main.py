@@ -16,6 +16,7 @@ from machine import UART
 from IMU_I2C import IMU_I2C
 import os
 from ulab import numpy as np
+import math
 
 ser = USB_VCP()
 
@@ -66,10 +67,10 @@ PC2 = Pin(Pin.cpu.C2, mode=Pin.ANALOG)
 BAT_READ = pyb.ADC(PC2)
 
 # CONTROLLER SETPOINT IS IN MM/S
-cl_ctrl_mot_left = CLMotorController(0, 0, 0, Kp=.5, Ki=5, min_sat=-100, max_sat=100, t_init=0,
-                                     v_nom=9, threshold=5, K3=.0209)
-cl_ctrl_mot_right = CLMotorController(0, 0, 0, Kp=.5, Ki=5, min_sat=-100, max_sat=100, t_init=0,
-                                      v_nom=9, threshold=5, K3=.0216)
+cl_ctrl_mot_left = CLMotorController(0, 0, 0, Kp=.5, Ki=3.8, min_sat=-100, max_sat=100, t_init=0,
+                                     v_nom=9, threshold=5, K3=.06687)
+cl_ctrl_mot_right = CLMotorController(0, 0, 0, Kp=.5, Ki=3.8, min_sat=-100, max_sat=100, t_init=0,
+                                      v_nom=9, threshold=5, K3=.06841)
 
 ir_ch1 = IR_sensor(Pin(Pin.cpu.C3, mode=Pin.ANALOG))
 ir_ch3 = IR_sensor(Pin(Pin.cpu.A4, mode=Pin.ANALOG))
@@ -181,9 +182,21 @@ i2c = I2C(2, I2C.CONTROLLER)
 IMU = IMU_I2C(i2c, IMU_addr)  # Create IMU_I2C object
 
 
+
+
 def IMU_OP(shares):
+    
+    # def updateXY(x_coord, y_coord):
+    #     # dt = new_time_meas - old_time_saved
+    #     # old_time_saved = old_time # old time is now the same as curr_time
+    #     S_diff = x_hat_new[2] - dist_traveled_old
+    #     x_coord_new = x_coord + S_diff*math.cos(x_hat_new[3])
+    #     y_coord_new = y_coord + S_diff*math.sin(x_hat_new[3])
+    #     return x_coord_new, y_coord_new
+    
+    
     L_pos_share, R_pos_share, L_voltage_share, R_voltage_share, L_vel_share, R_vel_share, \
-        yaw_angle_share, yaw_rate_share, dist_traveled_share, IMU_time_share, test_start_time = shares
+        yaw_angle_share, yaw_rate_share, dist_traveled_share, IMU_time_share, test_start_time, x_position, y_position = shares
     heading_offset = 0
     robot_width = 141  # mm
     wheel_radius = 35  # mm
@@ -195,6 +208,10 @@ def IMU_OP(shares):
     u_aug = np.array(np.zeros(6).reshape(6, ))
     y_measured = np.array(np.zeros(4).reshape(4, ))
     y_hat = np.array(np.zeros(4).reshape(4, ))
+    
+    # Set initial global coordinates
+    global_coords = [0,0]
+    
     # A_d = np.array(
     #     [0.50,0.06,0.01,0.000000,0.06,0.50,0.01,0.000000,0.02,0.02,0.98,0.000000,0.000000,0.000000,0.000000,1.000000]).reshape((4, 4)).transpose()
     A_d = np.array(
@@ -237,6 +254,7 @@ def IMU_OP(shares):
                     print("IMU not calibrated for some reason")
                     print(cal_status)
                     state = 1
+           
             else:
 
                 cal_bit = False
@@ -260,10 +278,15 @@ def IMU_OP(shares):
         elif state == 1:  # Initialize reference Yaw based on encoder values
             # print("State 1")
             # y vector:
+            sleep_ms(200)
+            Euler_offset = IMU.readEulerAngles()[0]  # update yaw angle (rad)    
+            # print(f"Offset: {Euler_offset}")
+            
             y_measured[0] = L_pos_share.get() * .153  # in encoder counts, converted to mm
             y_measured[1] = R_pos_share.get() * .153  # in encoder counts, converted to mm
-            y_measured[2] = IMU.readEulerAngles()[0]  # update yaw angle (rad)
+            y_measured[2] = IMU.readEulerAngles()[0] - Euler_offset  # update yaw angle (rad)
             y_measured[3] = IMU.readAngularVelocity()[2]  # update yaw rate (rad/s)
+            
 
             # Psi = Sr - Sl/w (use encoder values)
             y_measured[2] = (y_measured[1] - y_measured[0]) / robot_width
@@ -298,13 +321,13 @@ def IMU_OP(shares):
             IMU_time_share.put(ticks_diff(new_time_meas, test_start_time.get()))
             y_measured[0] = L_pos_share.get() * .153  # in encoder counts, converted to mm
             y_measured[1] = R_pos_share.get() * .153  # in encoder counts, converted to mm
-            y_measured[2] = IMU.readEulerAngles()[0]  # update yaw angle
+            y_measured[2] = IMU.readEulerAngles()[0] - Euler_offset  # update yaw angle
             y_measured[3] = IMU.readAngularVelocity()[2]  # update yaw rate
             v_left = L_voltage_share.get()  # pwm converted to V in ops tasks
             v_right = R_voltage_share.get()
             u_aug = np.concatenate((np.array([v_left, v_right]), y_measured))
             yaw_angle_share.put(y_measured[2])
-            print(f"left pos share: {y_measured[0]}, right pos share: {y_measured[1]}, estimator left distance: {dist_traveled}")
+            # print(f"left pos share: {y_measured[0]}, right pos share: {y_measured[1]}, estimator left distance: {dist_traveled}")
             # print(f"left wheel s: {y_measured[0]}")
             # print(f"Yaw Angles from IMU: {y_measured[2]}")
             # print(f"Angular velocity: {y_measured[3]}")
@@ -315,11 +338,33 @@ def IMU_OP(shares):
             # print(R_pos_share.get())
             
             # print(f"LINE 306 {x_hat_new}")
-            # update set points for motor controllers
-            L_vel_share.put(x_hat_new[0])
-            R_vel_share.put(x_hat_new[1])
+            dist_traveled_old = x_hat_old[2]
+            x_hat_old = x_hat_new
+            
+            S_diff = x_hat_new[2] - dist_traveled_old
+            global_coords[0] = global_coords[0] + S_diff*math.cos(-1* y_measured[2])
+            if y_measured[2] >= 3.14:
+                global_coords[1] = global_coords[1] + S_diff*math.sin(-1 * y_measured[2])
+            else:
+                global_coords[1] = global_coords[1] + S_diff*math.sin(-1 * y_measured[2])
+            
+            # print(f"Angle: {-1* y_measured[3]} sin value: {math.sin(-1* y_measured[3])} cos value: {math.cos(-1* y_measured[3])}" )
+            # print(f"Psi: {y_measured[3]}, S: {x_hat_new[2]}")
+            # global_coords = updateXY(global_coords[0], global_coords[1])
+            x_position.put(global_coords[0])
+            y_position.put(global_coords[1])
+            
+            print(f"x-coord: {global_coords[0]}, y-coord: {global_coords[1]}")
+            
             state = 2
+                            
+                
+                
         yield state
+
+
+    
+
 
 
 """
@@ -456,6 +501,7 @@ def run_UI(shares):
     while True:
         if state == 0:  # init state
             # Init messenger variables
+            print("UI task inits")
             l_lin_spd = 0
             l_en = 1
             r_lin_spd = 0
@@ -469,6 +515,7 @@ def run_UI(shares):
                 uart.read()
         elif state == 1:
             if uart.any():  # wait for any character
+                print("Yay")
                 char_in = uart.read(1).decode()
                 state = 2
         elif state == 2:  # decode character
@@ -510,13 +557,13 @@ def run_UI(shares):
                 print(state)
                 state = 1
 
-            elif char_in == "t":  # Have Romi turn in place and collect angle data
+            elif char_in == "t":  # Run a test setting right and left speeds
                 r_en = 0
                 l_en = 0
                 R_en.put(r_en)
                 L_en.put(l_en)
-                l_lin_spd = 100
-                r_lin_spd = 100
+                l_lin_spd = 200
+                r_lin_spd = 200
                 L_lin_speed.put(l_lin_spd)
                 R_lin_speed.put(r_lin_spd)
                 # state = 1
@@ -608,7 +655,7 @@ def queue_to_list(q):
 def collect_data(shares):
     # print("collect data")
     state = 0
-    R_EFF, L_EFF, RIGHT_POS, RIGHT_VEL, R_TIME, LEFT_POS, LEFT_VEL, L_TIME, yaw_angle, yaw_rate, IMU_time_share, dist_traveled_share, run, print_out = shares
+    R_EFF, L_EFF, RIGHT_POS, RIGHT_VEL, R_TIME, LEFT_POS, LEFT_VEL, L_TIME, yaw_angle, yaw_rate, IMU_time_share, dist_traveled_share, x_position, y_position, run, print_out = shares
     while True:
         # print([x.get() for x in shares])
         # print("COLLECT DATA loop")
@@ -639,6 +686,9 @@ def collect_data(shares):
             # S_R_Q = cqueue.FloatQueue(QUEUE_SIZE)
             Psi_Q = cqueue.FloatQueue(QUEUE_SIZE)
             Psi_dot_Q = cqueue.FloatQueue(QUEUE_SIZE)
+            
+            X_position_Q = cqueue.FloatQueue(QUEUE_SIZE)  # Position share is initialized as f
+            Y_position_Q = cqueue.FloatQueue(QUEUE_SIZE)  # Position share is initialized as f
 
             print_out.put(0)
             state = 1
@@ -673,13 +723,18 @@ def collect_data(shares):
                 # Put IMU task shares
                 # S_L_Q.put()
                 # S_R_Q.put()
-                temp = (IMU_time_share.get())
-                # print(temp)
+                # temp = (IMU_time_share.get())
+                # # print(temp)
                 # IMU_TIME_Q.put(temp)
                 S_Q.put(dist_traveled_share.get())
 
                 Psi_Q.put(yaw_angle.get())
                 Psi_dot_Q.put(yaw_rate.get())
+                
+                X_position_Q.put(x_position.get())
+                Y_position_Q.put(y_position.get())
+                
+                # IMU_TIME_Q.put(IMU_time_share.get())
 
                 state = 2
             else:
@@ -717,7 +772,8 @@ def collect_data(shares):
             print("Got to the Euler angle write in collection task")
             while Psi_Q.any():
                 size += 1
-                uart.write(f"{IMU_TIME_Q.get()}, {Psi_Q.get()}, {Psi_dot_Q.get()}\r\n")
+                # uart.write(f"{IMU_TIME_Q.get()}, {Psi_Q.get()}, {Psi_dot_Q.get()}, {X_position_Q.get()}, {Y_position_Q.get()}\r\n")
+                uart.write(f"{Psi_Q.get()}, {Psi_dot_Q.get()}, {X_position_Q.get()}, {Y_position_Q.get()}\r\n")
                 sleep_ms(5)
             # uart.write(f"Yaw rate output")
             # while Psi_dot_Q.any():
@@ -791,6 +847,8 @@ if __name__ == "__main__":
     dist_traveled_share = task_share.Share('f', thread_protect=False, name="Distance traveled")
     IMU_time_share = task_share.Share('I', thread_protect=False, name="IMU time")
     time_start_share = task_share.Share('I', thread_protect=False, name="time start")
+    X_coords_share = task_share.Share('f', thread_protect=False, name="X coordinate")
+    Y_coords_share = task_share.Share('f', thread_protect=False, name="Y coordinate")
 
     # R_pos_queue = task_share.Queue('f', 100, name="R pos")
     # R_vel_queue = task_share.Queue('f', 100, name="R vel")
@@ -823,7 +881,7 @@ if __name__ == "__main__":
     task_collect_data = cotask.Task(collect_data, name="Collect Data", priority=0, period=20,
                                     profile=True, trace=True, shares=(
             R_lin_spd, L_lin_spd, R_pos_share, R_vel_share, R_time_share, L_pos_share, L_vel_share, L_time_share,
-            yaw_angle_share, yaw_rate_share, IMU_time_share, dist_traveled_share, run,
+            yaw_angle_share, yaw_rate_share, IMU_time_share, dist_traveled_share, X_coords_share, Y_coords_share, run,
             print_out))
 
     task_read_battery = cotask.Task(battery_read, name="Battery", priority=0, period=2000,
@@ -834,7 +892,7 @@ if __name__ == "__main__":
     task_state_estimator = cotask.Task(IMU_OP, name="state estimator", priority=10, period=50,
                                        profile=True, trace=True, shares=(
             L_pos_share, R_pos_share, L_voltage_share, R_voltage_share, L_vel_share, R_vel_share, yaw_angle_share,
-            yaw_rate_share, dist_traveled_share, IMU_time_share, time_start_share))
+            yaw_rate_share, dist_traveled_share, IMU_time_share, time_start_share, X_coords_share, Y_coords_share))
 
     # cotask.task_list.append(task1)
     # cotask.task_list.append(task2)
@@ -859,6 +917,10 @@ if __name__ == "__main__":
     while True:
         try:
             cotask.task_list.pri_sched()
+            # line = uart.readline()
+            # if not line:
+            #     continue
+            # print(f"line: {line}")
         except KeyboardInterrupt:
             print('\n' + str(cotask.task_list))
             print(task_share.show_all())

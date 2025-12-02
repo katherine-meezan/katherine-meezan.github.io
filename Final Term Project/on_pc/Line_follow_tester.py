@@ -41,9 +41,8 @@ def save_csv(filename, data_lines):
 
 with Serial(ComPort, baudrate=115_200, timeout=1) as ser:
 
-    print("Flushing serial port")
-    while ser.in_waiting:
-        ser.read()
+    # while ser.in_waiting:
+    #     ser.read()
         
 
     # print("Starting Black Calibration")
@@ -58,6 +57,9 @@ with Serial(ComPort, baudrate=115_200, timeout=1) as ser:
     # print("Calibration Done. Move to line")
     sleep(2)
     ser.write(b"y\r\n")
+    
+    while ser.in_waiting:
+        ser.read()
 
     while not ser.in_waiting: continue
 

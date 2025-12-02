@@ -97,8 +97,8 @@ class CLMotorController():
         return ctrl_sig
 
 class IRController():
-    def __init__(self, target, old_ticks, old_state, Kp=1, Ki=1, min_sat=-100, max_sat=100, t_init=0,
-                 K3=1):
+    def __init__(self, target, old_ticks, old_state, K3, Kp=1, Ki=1, min_sat=-4, max_sat=4, t_init=0,
+                 ):
         # super().__init__(target, old_ticks, old_state, Kp, Ki, min_sat, max_sat, t_init)
         self.target = target
         self.old_ticks = old_ticks
@@ -113,7 +113,7 @@ class IRController():
         self.t_init = t_init
         self.K1 = 1 # no scaling needed since sensor reading and setpoint are both milimeters of deviation
         self.K2 = 1 # no scaling needed, ^
-        self.K3 = 1 # sensitivity relation between PI signal and motor speed differential in mm/
+        self.K3 = K3 # sensitivity relation between PI signal and motor speed differential in mm/s
     def set_Kp(self, Kp):
         self.Kp = Kp
 
@@ -126,18 +126,18 @@ class IRController():
     def set_target(self, target):
         self.target = target
 
-    def get_action(self, new_ticks, new_state):
+    def get_action(self, new_ticks, new_state): # ticks in us, state in mm (centroid location)
         # new_ticks is a count in microseconds
-        self.error = (self.target*self.K1 - new_state*self.K2)
+        self.error = (self.target*self.K1 - new_state*self.K2) # mm difference of centroid location
         if(self.old_ticks == 0):
             self.old_ticks = new_ticks
             # print(f"init!: self")
         else:
-            self.dt = ticks_diff(new_ticks, self.old_ticks)/1E6
-            self.acc_error = self.acc_error + self.error*self.dt #Integral error, equivalent to degrees
+            self.dt = ticks_diff(new_ticks, self.old_ticks)/1E6 # time step passed
+            self.acc_error = self.acc_error + self.error*self.dt #Integral error, equivalent to mm of centroid
             self.old_ticks = new_ticks
         # do control algorithm
-        raw_ctrl_sig = (self.Kp*self.error + self.Ki*self.acc_error) # control output in wheel degrees per second
+        raw_ctrl_sig = (self.Kp*self.error + self.Ki*self.acc_error) # control output in 
         ctrl_sig = raw_ctrl_sig*self.K3
         # Units: desired in deg/s, err in deg/s, acc in total deg, raw in deg/s, sig in %pwm=effort
         # print(f"desired: {self.target*self.K1}, curr: {new_state*self.K2},Err: {self.error}, Acc: {self.acc_error}, Raw: {raw_ctrl_sig}, Sig: {ctrl_sig}")

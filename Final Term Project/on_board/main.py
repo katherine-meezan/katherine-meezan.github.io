@@ -19,6 +19,7 @@ from ulab import numpy as np
 import math
 
 ser = USB_VCP()
+"""! Setup for Bluetooth Module !"""
 
 # Setup Pins for bluetooth module
 # Deconfigure default pins
@@ -29,12 +30,12 @@ Pin(Pin.cpu.A3, mode=Pin.ANALOG)
 Pin(Pin.cpu.B6, mode=Pin.ALT, alt=7)  # Set pin modes to UART matching column 7 in alt. fcn. table
 Pin(Pin.cpu.B7, mode=Pin.ALT, alt=7)
 
+# Setup UART
 uart = UART(1, 115200)  # init with given baudrate
 uart.init(115200, bits=8, parity=None, stop=1)  # init with given parameters
 uart.write("test".encode())
 
-# L_en = 0
-# L_eff = 0
+"""! Global Variables Defined (Check if actually needed to clean up) !"""
 L_prev_dir = 0
 L_prev_en = 1
 L_prev_eff = 0
@@ -46,6 +47,9 @@ R_prev_eff = 0
 R_t_start = 0
 R_t_UI = 0
 
+"""! Setup for Encoders and Motors !"""
+
+# Left Encoder Pins and Timer
 PA8 = Pin(Pin.cpu.A8, mode=Pin.OUT_PP)  # Timer1_Channel1: Encoder A left
 PA9 = Pin(Pin.cpu.A9, mode=Pin.OUT_PP)  # Timer1_Channel2: Encoder B left
 timLeft = Timer(1, prescaler=0, period=0xFFFF)
@@ -53,6 +57,7 @@ ch1Left = timLeft.channel(1, Timer.ENC_AB, pin=PA8)
 ch2Left = timLeft.channel(2, Timer.ENC_AB, pin=PA9)
 left_encoder = Encoder(timLeft, ch1Left, ch2Left)
 
+# Right Encoder Pins and Timer
 PB4 = Pin(Pin.cpu.B4, mode=Pin.OUT_PP)  # Timer3_Channel1: Encoder A right
 PB5 = Pin(Pin.cpu.B5, mode=Pin.OUT_PP)  # Timer3_Channel2: Encoder B right
 timRight = Timer(3, prescaler=0, period=0xFFFF)
@@ -60,18 +65,24 @@ ch1Right = timRight.channel(1, Timer.ENC_AB, pin=PB4)
 ch2Right = timRight.channel(2, Timer.ENC_AB, pin=PB5)
 right_encoder = Encoder(timRight, ch1Right, ch2Right)
 
+# Create Motor Objects
 mot_left = motor_driver(Pin.cpu.B9, Pin.cpu.C9, Pin.cpu.C8, Timer(17, freq=60000), 1)
 mot_right = motor_driver(Pin.cpu.A6, Pin.cpu.A1, Pin.cpu.A0, Timer(16, freq=60000), 1)
 
-PC2 = Pin(Pin.cpu.C2, mode=Pin.ANALOG)
-BAT_READ = pyb.ADC(PC2)
-
+# Create Motor Controllers
 # CONTROLLER SETPOINT IS IN MM/S
 cl_ctrl_mot_left = CLMotorController(0, 0, 0, Kp=.5, Ki=3.8, min_sat=-100, max_sat=100, t_init=0,
                                      v_nom=9, threshold=5, K3=.06687)
 cl_ctrl_mot_right = CLMotorController(0, 0, 0, Kp=.5, Ki=3.8, min_sat=-100, max_sat=100, t_init=0,
                                       v_nom=9, threshold=5, K3=.06841)
 
+"""! Battery Read Task setup !"""
+PC2 = Pin(Pin.cpu.C2, mode=Pin.ANALOG)
+BAT_READ = pyb.ADC(PC2)
+
+
+"""! IR Sensor Setup !"""
+# Create Pins for Odd-numbered IR sensors in Array
 ir_ch1 = IR_sensor(Pin(Pin.cpu.C3, mode=Pin.ANALOG))
 ir_ch3 = IR_sensor(Pin(Pin.cpu.A4, mode=Pin.ANALOG))
 ir_ch5 = IR_sensor(Pin(Pin.cpu.B0, mode=Pin.ANALOG))
@@ -82,61 +93,14 @@ ir_ch13 = IR_sensor(Pin(Pin.cpu.C5, mode=Pin.ANALOG))
 channels = [ir_ch1, ir_ch3, ir_ch5, ir_ch7, ir_ch9, ir_ch11, ir_ch13]
 ir_sensor_array = sensor_array(channels, 4, 8)
 
+# Setup IR Sensor controller
 centroid_set_point = 0
-ir_controller = IRController(centroid_set_point, 0, 0, Kp=3, Ki=1)
 
+ir_controller = IRController(centroid_set_point, 0 , 0, K3=1, Kp=1, Ki=0)
 
-def IR_sensor(shares):
-    global centroid_set_point
-    calib_black, calib_white, line_follow, L_speed_share, R_speed_share, wheel_diff = shares
-    state = 0
-    while True:
-        # print("IR TASK CALLED")
-        if state == 0:  # wait for a flag to be set
-            if calib_black.get() == 1:
-                state = 1
-            elif calib_white.get() == 1:
-                state = 2
-            elif line_follow.get() == 1:
-                state = 3
-        elif state == 1:
-            print("Starting Black Calibration!")
-            calib_start = ticks_ms()
-            # ir_sensor_array.calibrate_black()
-            calib_end = ticks_ms()
-            calib_time = ticks_diff(calib_end, calib_start)
-            print(f"Calibration complete! Time elapsed: {calib_time / 1000}")
-            print(f"Black Values: {ir_sensor_array.blacks}")
-            # ir_sensor_array.blacks = [3206.13, 2983.14, 3063.67, 2910.69, 2800.52, 2930.22, 3063.97]
-            calib_black.put(0)
-            state = 0
-        elif state == 2:
-            print("Starting White Calibration!")
-            calib_start = ticks_ms()
-            # ir_sensor_array.calibrate_white()
-            calib_end = ticks_ms()
-            calib_time = ticks_diff(calib_end, calib_start)
-            print(f"Calibration complete! Time elapsed: {calib_time / 1000}")
-            print(f"White Values: {ir_sensor_array.whites}")
-            # ir_sensor_array.whites = [360.62, 299.06, 297.68, 286.17, 281.66, 295.05, 316.05]
-            calib_white.put(0)
-            state = 0
-        elif state == 3:
-            ir_sensor_array.blacks = [3206.13, 2983.14, 3063.67, 2910.69, 2800.52, 2930.22, 3063.97]
-            ir_sensor_array.whites = [360.62, 299.06, 297.68, 286.17, 281.66, 295.05, 316.05]
-            ir_controller.set_target(centroid_set_point)
-            ir_sensor_array.array_read()
-            ir_ticks_new = ticks_us()  # timestamp sensor reading for controller
-            wheel_speed_diff = ir_controller.get_action(ir_ticks_new, ir_sensor_array.find_centroid())
-            # split the difference in wheel speeds evenly between the two wheels
-            wheel_diff.put(wheel_speed_diff)
-            print(f"Centroid: {ir_sensor_array.find_centroid()}, speed_diff: {wheel_speed_diff}")
-            # print(wheel_speed_diff)
-        yield state
+"""! Setup for IMU !"""
 
-
-"""! BNO055 Memory addresses !"""
-
+#BNO055 Memory addresses
 op_mode_addr = 0x3D  # Page 70 of the BNO055 data sheet
 """! Operation mode byte:
     Bits 4-7 reserved
@@ -181,7 +145,85 @@ i2c = I2C(2, I2C.CONTROLLER)
 
 IMU = IMU_I2C(i2c, IMU_addr)  # Create IMU_I2C object
 
+"""! Bump Sensor Setup !"""
+# Create Pins
+PB12 = Pin(Pin.cpu.B12, mode=Pin.IN, pull=Pin.PULL_UP) # For Right Bump Sensor
+PB13 = Pin(Pin.cpu.B13, mode=Pin.IN, pull=Pin.PULL_UP) # For Left Bump Sensor
 
+"""! Tasks defined as Functions:
+    bump_sensors
+    IR_sensor
+    IMU_OP
+    left_ops
+    right_ops
+    UI
+    collect_data
+    battery_read
+    
+    !"""
+
+def bump_sensors(shares):
+    r_velocity, l_velocity = shares
+    state = 1
+    while True:
+        if (not PB12.value() or not PB13.value()): # This condition being true indicates one of the bump sensor activated
+            r_velocity.put(0)
+            l_velocity.put(0)
+            mot_left.disable()
+            mot_right.disable()
+            print("OW")
+    
+        yield state
+
+def IR_sensor(shares):
+    global centroid_set_point
+    calib_black, calib_white, line_follow, L_speed_share, R_speed_share, wheel_diff = shares
+    state = 0
+    while True:
+        # print("IR TASK CALLED")
+        if state == 0:  # wait for a flag to be set
+            if calib_black.get() == 1:
+                state = 1
+            elif calib_white.get() == 1:
+                state = 2
+            elif line_follow.get() == 1:
+                state = 3
+        elif state == 1:
+            print("Starting Black Calibration!")
+            calib_start = ticks_ms()
+            # ir_sensor_array.calibrate_black()
+            calib_end = ticks_ms()
+            calib_time = ticks_diff(calib_end, calib_start)
+            print(f"Calibration complete! Time elapsed: {calib_time / 1000}")
+            print(f"Black Values: {ir_sensor_array.blacks}")
+            # ir_sensor_array.blacks = [3206.13, 2983.14, 3063.67, 2910.69, 2800.52, 2930.22, 3063.97]
+            calib_black.put(0)
+            state = 0
+        elif state == 2:
+            print("Starting White Calibration!")
+            calib_start = ticks_ms()
+            # ir_sensor_array.calibrate_white()
+            calib_end = ticks_ms()
+            calib_time = ticks_diff(calib_end, calib_start)
+            print(f"Calibration complete! Time elapsed: {calib_time / 1000}")
+            print(f"White Values: {ir_sensor_array.whites}")
+            # ir_sensor_array.whites = [360.62, 299.06, 297.68, 286.17, 281.66, 295.05, 316.05]
+            calib_white.put(0)
+            state = 0
+        elif state == 3:
+            ir_sensor_array.blacks = [3206.13, 2983.14, 3063.67, 2910.69, 2800.52, 2930.22, 3063.97]
+            ir_sensor_array.whites = [360.62, 299.06, 297.68, 286.17, 281.66, 295.05, 316.05]
+            ir_controller.set_target(centroid_set_point)
+            ir_sensor_array.array_read()
+            ir_ticks_new = ticks_us()  # timestamp sensor reading for controller
+            controloutput_diff = ir_controller.get_action(ir_ticks_new, ir_sensor_array.find_centroid())
+            scaled_speed_diff = controloutput_diff*70
+            
+            # split the difference in wheel speeds evenly between the two wheels
+            wheel_diff.put(scaled_speed_diff)
+            print(f"Centroid: {ir_sensor_array.find_centroid()}, controller output: {controloutput_diff}, scaled speed diff: {scaled_speed_diff}")
+            # print(wheel_speed_diff)
+        yield state
 
 
 def IMU_OP(shares):
@@ -300,8 +342,8 @@ def IMU_OP(shares):
             old_time = ticks_us()
             print(L_vel_share.get())
             print(R_vel_share.get())
-            x_hat_old[0] = L_vel_share.get() / 35  # converted from mm/s to radians per second
-            x_hat_old[1] = R_vel_share.get() / 35  # converted from mm/s to radians per second
+            x_hat_old[0] = L_vel_share.get()*.153 / 35  # converted from counts/s to mm/s to radians per second
+            x_hat_old[1] = R_vel_share.get()*.153 / 35  # converted from counts/s to mm/s to radians per second
             x_hat_old[2] = 0  # Romi has not travelled any linear distance yet
             x_hat_old[3] = y_measured[2]  # yaw angle is already known from output vector
             state = 2
@@ -354,7 +396,7 @@ def IMU_OP(shares):
             x_position.put(global_coords[0])
             y_position.put(global_coords[1])
             
-            print(f"x-coord: {global_coords[0]}, y-coord: {global_coords[1]}")
+            # print(f"x-coord: {global_coords[0]}, y-coord: {global_coords[1]}")
             
             state = 2
                             
@@ -363,25 +405,11 @@ def IMU_OP(shares):
         yield state
 
 
-    
-
-
-
 """
 
 AUTOMATICALLY UPDATES THE DIRECTION SHARE, ONLY SET EFFORT AND ENABLE SHARES:
 L_eff_share, L_en_share, R_eff_share, R_en_share
 
-
-IMPORTANT: EFFORT SHARE NOW STORES A SPEED IN MM/S, SHOULD BE RETITLED
-IMPORTANT: EFFORT SHARE NOW STORES A SPEED IN MM/S, SHOULD BE RETITLED
-IMPORTANT: EFFORT SHARE NOW STORES A SPEED IN MM/S, SHOULD BE RETITLED
-IMPORTANT: EFFORT SHARE NOW STORES A SPEED IN MM/S, SHOULD BE RETITLED
-IMPORTANT: EFFORT SHARE NOW STORES A SPEED IN MM/S, SHOULD BE RETITLED
-IMPORTANT: EFFORT SHARE NOW STORES A SPEED IN MM/S, SHOULD BE RETITLED
-IMPORTANT: EFFORT SHARE NOW STORES A SPEED IN MM/S, SHOULD BE RETITLED
-IMPORTANT: EFFORT SHARE NOW STORES A SPEED IN MM/S, SHOULD BE RETITLED
-IMPORTANT: EFFORT SHARE NOW STORES A SPEED IN MM/S, SHOULD BE RETITLED
 """
 
 
@@ -430,7 +458,7 @@ def left_ops(shares):
 
 
 def right_ops(shares):
-    # print("RIGHT OPS")
+    print("RIGHT OPS")
     state = 0
     # params: R dir, R eff, R en, R pos, R vel, R time
     R_lin_spd, R_en, R_pos, R_vel, R_time, line_follower_diff, follower_on, R_voltage = shares
@@ -481,10 +509,10 @@ UI Task guide:
     n = enable/disable left motor
     p = print current motor efforts
     s = run step response test
-    b = print current task state (for debugging, can remove)
+    b = general move state, configure as needed
     z = print left queues
     x = print right queues
-    t = Spin in circle and collect euler data
+    t = configure for testing
 
 Motor step response test:
     Turns both motors off
@@ -498,6 +526,7 @@ Motor step response test:
 def run_UI(shares):
     L_lin_speed, L_en, R_lin_speed, R_en, Run, Print_out, test_start_time_share = shares
     state = 0
+    print("UI")
     while True:
         if state == 0:  # init state
             # Init messenger variables
@@ -554,7 +583,11 @@ def run_UI(shares):
                 uart.write("Left motor effort: ", l_lin_spd, "\nRight motor effort: ", r_lin_spd)
                 state = 1
             elif char_in == "b":
-                print(state)
+                r_lin_spd = 100
+                l_lin_spd = 100
+                R_lin_speed.put(r_lin_spd)
+                L_lin_speed.put(l_lin_spd)
+                print("Hi")
                 state = 1
 
             elif char_in == "t":  # Run a test setting right and left speeds
@@ -602,8 +635,8 @@ def run_UI(shares):
             elif char_in == "y":
                 l_en = 1
                 r_en = 1
-                r_lin_spd = 2
-                l_lin_spd = 2
+                r_lin_spd = 200
+                l_lin_spd = 200
                 R_lin_speed.put(r_lin_spd)
                 L_lin_speed.put(l_lin_spd)
                 L_en.put(l_en)
@@ -639,21 +672,10 @@ def run_UI(shares):
         yield state
 
 
-"""!
-I got the below helper function from chatGPT, it does not work but it is here
-!"""
-
-
-# Helper function to dump all items from a queue into a list
-def queue_to_list(q):
-    data = []
-    while q.any():
-        data.append(q.get())
-    return data
-
 
 def collect_data(shares):
     # print("collect data")
+    print("Collect Data")
     state = 0
     R_EFF, L_EFF, RIGHT_POS, RIGHT_VEL, R_TIME, LEFT_POS, LEFT_VEL, L_TIME, yaw_angle, yaw_rate, IMU_time_share, dist_traveled_share, x_position, y_position, run, print_out = shares
     while True:
@@ -668,12 +690,12 @@ def collect_data(shares):
             # Initialize rightside queues
             RIGHT_POS_Q = cqueue.FloatQueue(QUEUE_SIZE)  # Position share is initialized as f
             RIGHT_VEL_Q = cqueue.FloatQueue(QUEUE_SIZE)  # Velocity share is initialized as f
-            R_TIME_Q = cqueue.IntQueue(QUEUE_SIZE)  # Time share is initialized as I
+            # R_TIME_Q = cqueue.IntQueue(QUEUE_SIZE)  # Time share is initialized as I
 
             # Initialize leftside queues
             LEFT_POS_Q = cqueue.FloatQueue(QUEUE_SIZE)  # Position share is initialized as f
             LEFT_VEL_Q = cqueue.FloatQueue(QUEUE_SIZE)  # Velocity share is initialized as f
-            L_TIME_Q = cqueue.IntQueue(QUEUE_SIZE)  # Time share is initialized as I
+            # L_TIME_Q = cqueue.IntQueue(QUEUE_SIZE)  # Time share is initialized as I
 
             # IMU Queues
             IMU_TIME_Q = cqueue.IntQueue(QUEUE_SIZE)  # Time share is initialized as I
@@ -814,25 +836,25 @@ def battery_read(shares):
 if __name__ == "__main__":
     uart.write("Testing ME405 stuff in cotask.py and task_share.py\r\n"
                "Press Ctrl-C to stop and show diagnostics")
-
+ 
     # Create a share and a queue to test function and diagnostic printouts
     share0 = task_share.Share('h', thread_protect=False, name="Share 0")
     q0 = task_share.Queue('L', 16, thread_protect=False, overwrite=False,
                           name="Queue 0")
-
+    
     # Create Share objects for inter-task communication
-    L_lin_spd = task_share.Share('f', thread_protect=False, name="L lin spd")
-    L_voltage_share = task_share.Share('f', thread_protect=False, name="L mot eff")
+    L_lin_spd = task_share.Share('f', thread_protect=False, name="L lin spd") # Controlls Motor Setpoint, in mm/s
+    L_voltage_share = task_share.Share('f', thread_protect=False, name="L mot eff") # Volts
     L_en_share = task_share.Share('H', thread_protect=False, name="L en")
-    L_pos_share = task_share.Share('f', thread_protect=False, name="L pos")
-    L_vel_share = task_share.Share('f', thread_protect=False, name="L vel")
-    L_time_share = task_share.Share('I', thread_protect=False, name="L time")
+    L_pos_share = task_share.Share('f', thread_protect=False, name="L pos") # Encoder Counts
+    L_vel_share = task_share.Share('f', thread_protect=False, name="L vel") # Stores read velocity in counts/s
+    L_time_share = task_share.Share('I', thread_protect=False, name="L time") # us
     R_dir_share = task_share.Share('H', thread_protect=False, name="R dir")
-    R_lin_spd = task_share.Share('f', thread_protect=False, name="R lin spd")
-    R_voltage_share = task_share.Share('f', thread_protect=False, name="R mot eff")
+    R_lin_spd = task_share.Share('f', thread_protect=False, name="R lin spd") # Controls Motor Setpoint, in mm/s
+    R_voltage_share = task_share.Share('f', thread_protect=False, name="R mot eff") # Volts
     R_en_share = task_share.Share('H', thread_protect=False, name="R en")
-    R_pos_share = task_share.Share('f', thread_protect=False, name="R pos")
-    R_vel_share = task_share.Share('f', thread_protect=False, name="R vel")
+    R_pos_share = task_share.Share('f', thread_protect=False, name="R pos") # Encoder Counts
+    R_vel_share = task_share.Share('f', thread_protect=False, name="R vel") # Stores read velocity in counts/s
     R_time_share = task_share.Share('I', thread_protect=False, name="R time")
     run = task_share.Share('H', thread_protect=False, name="run")
     print_out = task_share.Share('H', thread_protect=False, name="print out")
@@ -871,8 +893,7 @@ if __name__ == "__main__":
                                  profile=True, trace=True, shares=(R_lin_spd, R_en_share, R_pos_share, R_vel_share,
                                                                    R_time_share, wheel_diff, line_follow,
                                                                    R_voltage_share))
-    # task_dumb_ui = cotask.Task(dumb_ui, name="Dumb UI", priority=1, period=10,
-    #                             profile=True, trace=True, shares=(L_eff_share, R_eff_share))
+  
 
     task_ui = cotask.Task(run_UI, name="UI", priority=1, period=100,
                           profile=True, trace=True,
@@ -894,18 +915,20 @@ if __name__ == "__main__":
             L_pos_share, R_pos_share, L_voltage_share, R_voltage_share, L_vel_share, R_vel_share, yaw_angle_share,
             yaw_rate_share, dist_traveled_share, IMU_time_share, time_start_share, X_coords_share, Y_coords_share))
 
+    task_bump_sensor = cotask.Task(bump_sensors, name = "bump sensor Interrupt", priority=0, period = 20,
+                                   profile=True, trace=True, shares = (R_lin_spd, L_lin_spd))
     # cotask.task_list.append(task1)
     # cotask.task_list.append(task2)
 
     # Add tasks to task list to run in scheduler
     cotask.task_list.append(task_left_ops)
-    cotask.task_list.append(task_right_ops)  # only testing with the left motor
-    # cotask.task_list.append(task_dumb_ui)
+    cotask.task_list.append(task_right_ops) 
     cotask.task_list.append(task_ui)
     cotask.task_list.append(task_collect_data)
     cotask.task_list.append(task_read_battery)
-    # cotask.task_list.append(task_IR_sensor)
+    cotask.task_list.append(task_IR_sensor)
     cotask.task_list.append(task_state_estimator)
+    cotask.task_list.append(task_bump_sensor)
 
     # Run the memory garbage collector to ensure memory is as defragmented as
     # possible before the real-time scheduler is started
@@ -921,11 +944,19 @@ if __name__ == "__main__":
             # if not line:
             #     continue
             # print(f"line: {line}")
+        
         except KeyboardInterrupt:
+            mot_left.disable()
+            mot_right.disable()
             print('\n' + str(cotask.task_list))
             print(task_share.show_all())
             print('')
             break
+  
+        except:
+            mot_left.disable()
+            mot_right.disable()
+            raise
     # Print a table of task data and a table of shared information data
     print('\n' + str(cotask.task_list))
     print(task_share.show_all())

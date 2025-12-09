@@ -1,5 +1,5 @@
 class Command():
-    def __init__(self, mode: str, end_condition: float, lin_speed: float, coords = (0,0)):
+    def __init__(self, mode: str, end_condition: float, lin_speed: float, x_coord=0, y_coord=0):
         self.mode = mode
         """
         modes: 
@@ -17,7 +17,8 @@ class Command():
         for blind reverse mode:
         end condition is the linear distance travelled in mm (s)
         """
-        self.coords = coords #tuple of X, Y, coordinates. Can be ignored for modes other thans 1
+        self.x_coord = x_coord #X coordinate. Can be ignored for modes other than 1
+        self.y_coord = y_coord #Y coordinate. Can be ignored for modes other than 1
         self.lin_speed = lin_speed # desired linear speed of romi in mm/s
     def check_end_condition(self, state): # returns 1 if the end condition has been reached
         if self.mode == "pos":

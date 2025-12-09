@@ -81,7 +81,6 @@ cl_ctrl_mot_right = CLMotorController(0, 0, 0, Kp=.5, Ki=3.8, min_sat=-100, max_
 PC2 = Pin(Pin.cpu.C2, mode=Pin.ANALOG)
 BAT_READ = pyb.ADC(PC2)
 
-
 """! IR Sensor Setup !"""
 # Create Pins for Odd-numbered IR sensors in Array
 ir_ch1 = IR_sensor(Pin(Pin.cpu.C3, mode=Pin.ANALOG))
@@ -97,12 +96,12 @@ ir_sensor_array = sensor_array(channels, 4, 8)
 # Setup IR Sensor controller
 centroid_set_point = 0
 
-ir_controller = IRController(centroid_set_point, 0 , 0, K3=1, Kp=1, Ki=0)
-position_controller = PositionController(0, 0 , 0, K3=1, Kp=1, Ki=0)
+ir_controller = IRController(centroid_set_point, 0, 0, K3=1, Kp=1, Ki=0)
+position_controller = PositionController(0, 0, 0, K3=1, Kp=1, Ki=0)
 
 """! Setup for IMU !"""
 
-#BNO055 Memory addresses
+# BNO055 Memory addresses
 op_mode_addr = 0x3D  # Page 70 of the BNO055 data sheet
 """! Operation mode byte:
     Bits 4-7 reserved
@@ -144,13 +143,29 @@ PB11 = Pin(Pin.cpu.B11, mode=Pin.ALT, alt=4)  # I2C2 SDA
 # Create I2C controller object
 # i2c = I2C(2)
 i2c = I2C(2, I2C.CONTROLLER)
-
 IMU = IMU_I2C(i2c, IMU_addr)  # Create IMU_I2C object
-
 """! Bump Sensor Setup !"""
 # Create Pins
-PB12 = Pin(Pin.cpu.B12, mode=Pin.IN, pull=Pin.PULL_UP) # For Right Bump Sensor
-PB13 = Pin(Pin.cpu.B13, mode=Pin.IN, pull=Pin.PULL_UP) # For Left Bump Sensor
+PB12 = Pin(Pin.cpu.B12, mode=Pin.IN, pull=Pin.PULL_UP)  # For Right Bump Sensor
+PB13 = Pin(Pin.cpu.B13, mode=Pin.IN, pull=Pin.PULL_UP)  # For Left Bump Sensor
+
+
+def yaw_error(x_curr, y_curr, yaw_curr, x_set, y_set):  # calculates difference between desired and real yaw
+    # E is the vector pointing from Romi's position to the target
+    E_x = x_set - x_curr
+    E_y = y_set - y_curr
+    # E_yaw = math.atan2(E_y, E_x) # atan2 output is between negative pi and pi
+    E_mag = math.sqrt(E_x * E_x + E_y * E_y)
+    # C is the unit vector pointing in the current yaw direction
+    C_x = math.cos(yaw_curr)
+    C_y = math.sin(yaw_curr)
+    # Theta is the angle between vectors, but is always positive
+    theta = math.acos((C_x * E_x + C_y * E_y) / E_mag)
+    cross = C_x * E_x - C_y * E_y
+    # positive sign means theta is CCW, negative is CW
+    # output is the angle FROM E to C
+    sign = -1 * cross / abs(cross)
+    return theta * sign, E_mag
 
 """! Tasks defined as Functions:
     bump_sensors
@@ -161,34 +176,31 @@ PB13 = Pin(Pin.cpu.B13, mode=Pin.IN, pull=Pin.PULL_UP) # For Left Bump Sensor
     UI
     collect_data
     battery_read
-    
+
     !"""
 
-
 def commander(shares):
-    x_position, y_position, start_pathing, position_follow, line_follow, x_target, y_target, course_start, dist_from_target, distance_traveled_share = shares
+    x_position, y_position, start_pathing, position_follow, line_follow, x_target, y_target, dist_from_target, distance_traveled_share = shares
     operations = []
     """
     ADD COMMAND OBJECTS TO THE LIST TO BE EXECUTED IN ORDER
-    
-    
     """
     operations.append(Command("pos", 25, 200, (800, 800)))
     state = 0
     while True:
         if state == 0:
-            if operations and course_start.get(): # check if commands list is empty
-               curr_command = operations[0]
+            if operations and start_pathing.get():  # check if commands list is empty
+                curr_command = operations[0]
+                state = 1
             else:
                 # stop moving Romi, since course is completed.
                 cl_ctrl_mot_left.target = 0
                 cl_ctrl_mot_right.target = 0
-            state = 1
         elif state == 1:
             # parse command objects and set modes for tasks
-            if curr_command.mode == "lin": # line follower mode
+            if curr_command.mode == "lin":  # line follower mode
                 line_follow.put(1)
-            elif curr_command.mode == "pos": # position follower mode
+            elif curr_command.mode == "pos":  # position follower mode
                 position_follow.put(1)
                 x_target.put(curr_command.coords[0])
             #     y_target.put(curr_command.coords[1])
@@ -199,9 +211,9 @@ def commander(shares):
         elif state == 2:
             # check if the command has been fulfilled
             done = 0
-            if curr_command.mode == "lin": # line follower mode
+            if curr_command.mode == "lin":  # line follower mode
                 done = curr_command.check_end_condition(distance_traveled_share.get())
-            elif curr_command.mode == "pos": # position follower mode
+            elif curr_command.mode == "pos":  # position follower mode
                 done = curr_command.check_end_condition(dist_from_target.get())
             # elif curr_command.mode == 2: # bumper mode
             #
@@ -209,38 +221,16 @@ def commander(shares):
             if done:
                 position_follow.put(0)
                 line_follow.put(0)
-                operations.pop(0) # remove command that has completed executing
+                operations.pop(0)  # remove command that has completed executing
                 state = 0
         yield state
 
-
-# def pathing(shares):
-#     l_velocity, r_velocity, x_position, y_position, distance_traveled_share, start_pathing, follower_on = shares
-#     state = 0
-#     while True:
-#         if state == 0:
-#             #print(start_pathing.get())
-#             if start_pathing.get():
-#                 state = 1
-#
-#         elif state == 1:
-#             # centroid_set_point = -2
-#             follower_on.put(1)
-#             l_velocity.put(200)
-#             r_velocity.put(200)
-#             if x_position > 750:
-#                 state = 2
-#         elif state == 2:
-#             l_velocity.put(0)
-#             r_velocity.put(0)
-#             line_follow.put(0)
-#         yield state
 
 def bump_sensors(shares):
     r_velocity, l_velocity = shares
     state = 1
     while True:
-        if (not PB12.value() or not PB13.value()): # This condition being true indicates one of the bump sensor activated
+        if (not PB12.value() or not PB13.value()):  # This condition being true indicates one of the bump sensor activated
             r_velocity.put(0)
             l_velocity.put(0)
             sleep_ms(10)
@@ -248,26 +238,9 @@ def bump_sensors(shares):
             mot_right.disable()
             line_follow.put(0)
             print("OW")
-    
         yield state
 def PositionControl(shares):
     x_position, y_position, start_pathing, IMU_time_share, yaw_angle_share, wheel_diff, dist_from_target, X_target, Y_target = shares
-    def yaw_error(x_curr, y_curr, yaw_curr, x_set, y_set): #calculates difference between desired and real yaw
-        # E is the vector pointing from Romi's position to the target
-        E_x = x_set - x_curr
-        E_y = y_set - y_curr
-        # E_yaw = math.atan2(E_y, E_x) # atan2 output is between negative pi and pi
-        E_mag = math.sqrt(E_x*E_x + E_y*E_y)
-        # C is the unit vector pointing in the current yaw direction
-        C_x = math.cos(yaw_curr)
-        C_y = math.sin(yaw_curr)
-        # Theta is the angle between vectors, but is always positive
-        theta = math.acos((C_x*E_x + C_y*E_y)/E_mag)
-        cross = C_x*E_x - C_y*E_y
-        # positive sign means theta is CCW, negative is CW
-        # output is the angle FROM E to C
-        sign = -1*cross/abs(cross)
-        return theta*sign, E_mag
     state = 0
     while True:
         if state == 0:
@@ -279,10 +252,11 @@ def PositionControl(shares):
                 state = 0
         elif state == 1:
             # timestamp sensor reading for controller
-            yaw_err, dist_to_checkpoint = yaw_error(x_position.get(), y_position.get(), yaw_angle_share.get(), X_target.get(), Y_target.get())
+            yaw_err, dist_to_checkpoint = yaw_error(x_position.get(), y_position.get(), yaw_angle_share.get(),
+                                                    X_target.get(), Y_target.get())
             control_output_diff = position_controller.get_action(IMU_time_share.get(), yaw_err)
             scaled_speed_diff = control_output_diff * 70
-            dist_from_target.put(dist_to_checkpoint) # used to check command completion in commander task
+            dist_from_target.put(dist_to_checkpoint)  # used to check command completion in commander task
             wheel_diff.put(scaled_speed_diff)
             # print(f"Centroid: {ir_sensor_array.find_centroid()}, controller output: {control_output_diff}, scaled speed diff: {scaled_speed_diff}")
             if not start_pathing.get():
@@ -292,15 +266,13 @@ def PositionControl(shares):
         yield state
 
 
-
-
 def IR_sensor(shares):
     global centroid_set_point
     calib_black, calib_white, line_follow, L_speed_share, R_speed_share, wheel_diff = shares
     state = 0
     while True:
         # print("IR TASK CALLED")
-        gc.collect()
+        # gc.collect()
         if state == 0:  # wait for a flag to be set
             if calib_black.get() == 1:
                 state = 1
@@ -309,24 +281,24 @@ def IR_sensor(shares):
             elif line_follow.get() == 1:
                 state = 3
         elif state == 1:
-            print("Starting Black Calibration!")
+            # print("Starting Black Calibration!")
             calib_start = ticks_ms()
             # ir_sensor_array.calibrate_black()
             calib_end = ticks_ms()
             calib_time = ticks_diff(calib_end, calib_start)
-            print(f"Calibration complete! Time elapsed: {calib_time / 1000}")
-            print(f"Black Values: {ir_sensor_array.blacks}")
+            # print(f"Calibration complete! Time elapsed: {calib_time / 1000}")
+            # print(f"Black Values: {ir_sensor_array.blacks}")
             # ir_sensor_array.blacks = [3206.13, 2983.14, 3063.67, 2910.69, 2800.52, 2930.22, 3063.97]
             calib_black.put(0)
             state = 0
         elif state == 2:
-            print("Starting White Calibration!")
+            # print("Starting White Calibration!")
             calib_start = ticks_ms()
             # ir_sensor_array.calibrate_white()
             calib_end = ticks_ms()
             calib_time = ticks_diff(calib_end, calib_start)
-            print(f"Calibration complete! Time elapsed: {calib_time / 1000}")
-            print(f"White Values: {ir_sensor_array.whites}")
+            # print(f"Calibration complete! Time elapsed: {calib_time / 1000}")
+            # print(f"White Values: {ir_sensor_array.whites}")
             # ir_sensor_array.whites = [360.62, 299.06, 297.68, 286.17, 281.66, 295.05, 316.05]
             calib_white.put(0)
             state = 0
@@ -337,26 +309,16 @@ def IR_sensor(shares):
             ir_sensor_array.array_read()
             ir_ticks_new = ticks_us()  # timestamp sensor reading for controller
             controloutput_diff = ir_controller.get_action(ir_ticks_new, ir_sensor_array.find_centroid())
-            scaled_speed_diff = controloutput_diff*70
-            
+            scaled_speed_diff = controloutput_diff * 70
+
             # split the difference in wheel speeds evenly between the two wheels
             wheel_diff.put(scaled_speed_diff)
-            print(f"Centroid: {ir_sensor_array.find_centroid()}, controller output: {controloutput_diff}, scaled speed diff: {scaled_speed_diff}")
+            # print(f"Centroid: {ir_sensor_array.find_centroid()}, controller output: {controloutput_diff}, scaled speed diff: {scaled_speed_diff}")
             # print(wheel_speed_diff)
         yield state
 
 
 def IMU_OP(shares):
-    
-    # def updateXY(x_coord, y_coord):
-    #     # dt = new_time_meas - old_time_saved
-    #     # old_time_saved = old_time # old time is now the same as curr_time
-    #     S_diff = x_hat_new[2] - dist_traveled_old
-    #     x_coord_new = x_coord + S_diff*math.cos(x_hat_new[3])
-    #     y_coord_new = y_coord + S_diff*math.sin(x_hat_new[3])
-    #     return x_coord_new, y_coord_new
-    
-    
     L_pos_share, R_pos_share, L_voltage_share, R_voltage_share, L_vel_share, R_vel_share, \
         yaw_angle_share, yaw_rate_share, dist_traveled_share, IMU_time_share, test_start_time, x_position, y_position = shares
     heading_offset = 0
@@ -370,24 +332,23 @@ def IMU_OP(shares):
     u_aug = np.array(np.zeros(6).reshape(6, ))
     y_measured = np.array(np.zeros(4).reshape(4, ))
     y_hat = np.array(np.zeros(4).reshape(4, ))
-    
+
     # Set initial global coordinates
     global_coords = [0, 0]
     est_global_coords = [0, 0]
 
-
     A_d = np.array(
         [0.499445, 0.499445, 0.001942, 0.002727, 0.499445, 0.499445, 0.001942, -0.002727, 0.285397, 0.285397, 0.001110,
          -0.000000, -0.000000, -0.000000, 0.000000, 1.000000]).reshape((4, 4)).transpose()
-    
+
     B_d = np.array([
-       0.143168, 0.140021, 0.000545, 0.000765, 0.140021, 0.143168, 0.000545, -0.000765, -0.142699, -0.142699, 0.499445,
-       0.000000, -0.142699, -0.142699, 0.499445, 0.000000, -0.000000, 0.000000,
-       -0.000000, 0.000000, -2.012050, 2.012050, 0.000000, 0.022074]).reshape((6, 4)).transpose()
-   
+        0.143168, 0.140021, 0.000545, 0.000765, 0.140021, 0.143168, 0.000545, -0.000765, -0.142699, -0.142699, 0.499445,
+        0.000000, -0.142699, -0.142699, 0.499445, 0.000000, -0.000000, 0.000000,
+        -0.000000, 0.000000, -2.012050, 2.012050, 0.000000, 0.022074]).reshape((6, 4)).transpose()
+
     C = np.array(
-       [0.000000, 0.000000, 0.000000, -0.248227, 0.000000, 0.000000, 0.000000, 0.248227,
-        1.000000, 1.000000, 0.000000, 0.000000, -70.500000, 70.500000, 1.000000, 0.000000]).reshape((4, 4)).transpose()
+        [0.000000, 0.000000, 0.000000, -0.248227, 0.000000, 0.000000, 0.000000, 0.248227,
+         1.000000, 1.000000, 0.000000, 0.000000, -70.500000, 70.500000, 1.000000, 0.000000]).reshape((4, 4)).transpose()
 
     state = 0  # Calibration Procedure/Load calibration values
     old_time = ticks_us()
@@ -415,7 +376,7 @@ def IMU_OP(shares):
                     print("IMU not calibrated for some reason")
                     print(cal_status)
                     state = 1
-           
+
             else:
 
                 cal_bit = False
@@ -440,14 +401,13 @@ def IMU_OP(shares):
             # print("State 1")
             # y vector:
             sleep_ms(200)
-            Euler_offset = IMU.readEulerAngles()[0]  # update yaw angle (rad)    
+            Euler_offset = IMU.readEulerAngles()[0]  # update yaw angle (rad)
             # print(f"Offset: {Euler_offset}")
-            
+
             y_measured[0] = L_pos_share.get() * .153  # in encoder counts, converted to mm
             y_measured[1] = R_pos_share.get() * .153  # in encoder counts, converted to mm
             y_measured[2] = IMU.readEulerAngles()[0] - Euler_offset  # update yaw angle (rad)
             y_measured[3] = IMU.readAngularVelocity()[2]  # update yaw rate (rad/s)
-            
 
             # Psi = Sr - Sl/w (use encoder values)
             y_measured[2] = (y_measured[1] - y_measured[0]) / robot_width
@@ -461,8 +421,8 @@ def IMU_OP(shares):
             old_time = ticks_us()
             print(L_vel_share.get())
             print(R_vel_share.get())
-            x_hat_old[0] = L_vel_share.get()*.153 / 35  # converted from counts/s to mm/s to radians per second
-            x_hat_old[1] = R_vel_share.get()*.153 / 35  # converted from counts/s to mm/s to radians per second
+            x_hat_old[0] = L_vel_share.get() * .153 / 35  # converted from counts/s to mm/s to radians per second
+            x_hat_old[1] = R_vel_share.get() * .153 / 35  # converted from counts/s to mm/s to radians per second
             x_hat_old[2] = 0  # Romi has not travelled any linear distance yet
             x_hat_old[3] = y_measured[2]  # yaw angle is already known from output vector
             state = 2
@@ -497,24 +457,22 @@ def IMU_OP(shares):
             # print(f"U_AUG: {u_aug}")
             # print(L_pos_share.get())
             # print(R_pos_share.get())
-            
+
             # print(f"LINE 306 {x_hat_new}")
             dist_traveled_old = x_hat_old[2]
             x_hat_old = x_hat_new
-            
             S_diff = x_hat_new[2] - dist_traveled_old
-            global_coords[0] = global_coords[0] + S_diff*math.cos(-1* y_measured[2])
+            global_coords[0] = global_coords[0] + S_diff * math.cos(-1 * y_measured[2])
             if y_measured[2] >= 3.14:
-                global_coords[1] = global_coords[1] + S_diff*math.sin(-1 * y_measured[2])
+                global_coords[1] = global_coords[1] + S_diff * math.sin(-1 * y_measured[2])
             else:
-                global_coords[1] = global_coords[1] + S_diff*math.sin(-1 * y_measured[2])
-            
+                global_coords[1] = global_coords[1] + S_diff * math.sin(-1 * y_measured[2])
+
             # print(f"Angle: {-1* y_measured[3]} sin value: {math.sin(-1* y_measured[3])} cos value: {math.cos(-1* y_measured[3])}" )
             # print(f"Psi: {y_measured[3]}, S: {x_hat_new[2]}")
             # global_coords = updateXY(global_coords[0], global_coords[1])
             x_position.put(global_coords[0])
             y_position.put(global_coords[1])
-            
             # print(f"x-coord: {global_coords[0]}, y-coord: {global_coords[1]}")
             # use estimated states for the  position calculator
             est_global_coords[0] = est_global_coords[0] + S_diff * math.cos(-1 * y_measured[2])
@@ -524,7 +482,6 @@ def IMU_OP(shares):
                 est_global_coords[1] = est_global_coords[1] + S_diff * math.sin(-1 * y_hat[2])
             # print(f"est_out: Sl {y_hat[0]} Sr {y_hat[1]} psi {y_hat[2]} psi_dot {y_hat[3]} X: {est_global_coords[0]}, Y: {est_global_coords[1]}")
             # print(f"x-coord: {est_global_coords[0]}, y-coord: {est_global_coords[1]}")
-
             x_position.get()
             y_position.get()
 
@@ -542,15 +499,11 @@ L_eff_share, L_en_share, R_eff_share, R_en_share
 
 """
 
-def garbage_collect(shares):
-    gc.collect()  # Run garbage collector so that it runs regularly
-    yield 0
-
 def left_ops(shares):
     print("LEFT OPS")
     state = 0
     # params: L dir, L eff, L en, L pos, L vel, L time
-    L_lin_spd, L_en, L_pos, L_vel, L_time, line_follower_diff, follower_on, L_voltage, position_follower_diff, pathing_on = shares
+    L_lin_spd, L_en, L_pos, L_vel, L_time, wheel_diff, follower_on, L_voltage, position_follower_on = shares
     global L_prev_dir, L_prev_eff, L_prev_en, L_t_start
     # State 0: init
     while True:
@@ -574,11 +527,11 @@ def left_ops(shares):
                 cl_ctrl_mot_left.disable_integral_error()
             left_base_target = L_lin_spd.get()
             if follower_on.get():
-                follower_diff = line_follower_diff.get() / 2
+                follower_diff = wheel_diff.get() / 2
                 left_target = left_base_target - follower_diff
-            if pathing_on.get():  # implement the speed adjustment from the line follower task
-                follower_diff = position_follower_diff.get() / 2
-                cl_ctrl_mot_left.set_target(left_base_target + follower_diff)
+            elif position_follower_on.get():  # implement the speed adjustment from the line follower task
+                follower_diff = wheel_diff.get() / 2
+                cl_ctrl_mot_left.set_target(left_base_target - follower_diff)
             else:
                 left_target = left_base_target
             cl_ctrl_mot_left.set_target(left_target)
@@ -595,12 +548,12 @@ def right_ops(shares):
     # print("RIGHT OPS")
     state = 0
     # params: R dir, R eff, R en, R pos, R vel, R time
-    R_lin_spd, R_en, R_pos, R_vel, R_time, line_follower_diff, follower_on, R_voltage, position_follower_diff, pathing_on = shares
+    R_lin_spd, R_en, R_pos, R_vel, R_time, wheel_diff, line_follower_on, R_voltage, position_follower_on = shares
     global R_prev_dir, R_prev_eff, R_prev_en, R_t_start
     # State 0: init
     while True:
         # print("RIGHT OPS LOOP")
-        gc.collect()
+        # gc.collect()
         if state == 0:
             mot_right.enable()
             right_encoder.zero()
@@ -622,11 +575,11 @@ def right_ops(shares):
             right_base_target = R_lin_spd.get()
             cl_ctrl_mot_right.set_target(right_base_target)
             R_prev_eff = R_lin_spd.get()  # store and update the effort
-            if follower_on.get():  # implement the speed adjustment from the line follower task
-                follower_diff = line_follower_diff.get() / 2
+            if line_follower_on.get():  # implement the speed adjustment from the line follower task
+                follower_diff = wheel_diff.get() / 2
                 cl_ctrl_mot_right.set_target(right_base_target + follower_diff)
-            if pathing_on.get():  # implement the speed adjustment from the line follower task
-                follower_diff = position_follower_diff.get() / 2
+            elif position_follower_on.get():  # implement the speed adjustment from the line follower task
+                follower_diff = wheel_diff.get() / 2
                 cl_ctrl_mot_right.set_target(right_base_target + follower_diff)
             pwm_percent = cl_ctrl_mot_right.get_action(R_t_new, right_encoder.get_velocity())  # t_print is a pwm%
             mot_right.set_effort(pwm_percent)
@@ -818,7 +771,6 @@ def run_UI(shares):
         yield state
 
 
-
 def collect_data(shares):
     # print("collect data")
     print("Collect Data")
@@ -831,7 +783,7 @@ def collect_data(shares):
         # print("collect_data state: ", state)
         if state == 0:
             # Size of queue data being sent back to UI
-            QUEUE_SIZE = 400
+            QUEUE_SIZE = 1
 
             # Initialize rightside queues
             RIGHT_POS_Q = cqueue.FloatQueue(QUEUE_SIZE)  # Position share is initialized as f
@@ -854,7 +806,7 @@ def collect_data(shares):
             # S_R_Q = cqueue.FloatQueue(QUEUE_SIZE)
             Psi_Q = cqueue.FloatQueue(QUEUE_SIZE)
             Psi_dot_Q = cqueue.FloatQueue(QUEUE_SIZE)
-            
+
             X_position_Q = cqueue.FloatQueue(QUEUE_SIZE)  # Position share is initialized as f
             Y_position_Q = cqueue.FloatQueue(QUEUE_SIZE)  # Position share is initialized as f
 
@@ -898,10 +850,10 @@ def collect_data(shares):
 
                 Psi_Q.put(yaw_angle.get())
                 Psi_dot_Q.put(yaw_rate.get())
-                
+
                 X_position_Q.put(x_position.get())
                 Y_position_Q.put(y_position.get())
-                
+
                 # IMU_TIME_Q.put(IMU_time_share.get())
 
                 state = 2
@@ -941,7 +893,7 @@ def collect_data(shares):
             while Psi_Q.any():
                 size += 1
                 # uart.write(f"{IMU_TIME_Q.get()}, {Psi_Q.get()}, {Psi_dot_Q.get()}, {X_position_Q.get()}, {Y_position_Q.get()}\r\n")
-                uart.write(f"{Psi_Q.get()}, {Psi_dot_Q.get()}, {X_position_Q.get()}, {Y_position_Q.get()}\r\n")
+                # uart.write(f"{Psi_Q.get()}, {Psi_dot_Q.get()}, {X_position_Q.get()}, {Y_position_Q.get()}\r\n")
                 sleep_ms(5)
             # uart.write(f"Yaw rate output")
             # while Psi_dot_Q.any():
@@ -962,7 +914,7 @@ def battery_read(shares):
         # print("BATTERY TASK")
         battery, low_bat_flag = shares
         battery_level = BAT_READ.read() * 3.3 / 4095  # CONVERT TO VOLTAGE READ BY THE ADC
-        battery_level = battery_level * 14.7/4.7 # CONVERT TO ACTUAL BATTERY AMOUNT USING RESISTOR VALUES IN VOLTAGE DIVIDER
+        battery_level = battery_level * 14.7 / 4.7  # CONVERT TO ACTUAL BATTERY AMOUNT USING RESISTOR VALUES IN VOLTAGE DIVIDER
         battery.put(battery_level)
         cl_ctrl_mot_left.set_battery(battery_level)
         cl_ctrl_mot_right.set_battery(battery_level)
@@ -982,25 +934,28 @@ def battery_read(shares):
 if __name__ == "__main__":
     uart.write("Testing ME405 stuff in cotask.py and task_share.py\r\n"
                "Press Ctrl-C to stop and show diagnostics")
- 
+
     # Create a share and a queue to test function and diagnostic printouts
     share0 = task_share.Share('h', thread_protect=False, name="Share 0")
     q0 = task_share.Queue('L', 16, thread_protect=False, overwrite=False,
                           name="Queue 0")
-    
+    # print("BYTES OF FREE MEMORY")
+    print(gc.mem_free())
+    # print("Total amount of memory")
+    print(gc.mem_alloc())
     # Create Share objects for inter-task communication
-    L_lin_spd = task_share.Share('f', thread_protect=False, name="L lin spd") # Controlls Motor Setpoint, in mm/s
-    L_voltage_share = task_share.Share('f', thread_protect=False, name="L mot eff") # Volts
+    L_lin_spd = task_share.Share('f', thread_protect=False, name="L lin spd")  # Controls Motor Setpoint, in mm/s
+    L_voltage_share = task_share.Share('f', thread_protect=False, name="L mot eff")  # Volts
     L_en_share = task_share.Share('H', thread_protect=False, name="L en")
-    L_pos_share = task_share.Share('f', thread_protect=False, name="L pos") # Encoder Counts
-    L_vel_share = task_share.Share('f', thread_protect=False, name="L vel") # Stores read velocity in counts/s
-    L_time_share = task_share.Share('I', thread_protect=False, name="L time") # us
+    L_pos_share = task_share.Share('f', thread_protect=False, name="L pos")  # Encoder Counts
+    L_vel_share = task_share.Share('f', thread_protect=False, name="L vel")  # Stores read velocity in counts/s
+    L_time_share = task_share.Share('I', thread_protect=False, name="L time")  # us
     R_dir_share = task_share.Share('H', thread_protect=False, name="R dir")
-    R_lin_spd = task_share.Share('f', thread_protect=False, name="R lin spd") # Controls Motor Setpoint, in mm/s
-    R_voltage_share = task_share.Share('f', thread_protect=False, name="R mot eff") # Volts
+    R_lin_spd = task_share.Share('f', thread_protect=False, name="R lin spd")  # Controls Motor Setpoint, in mm/s
+    R_voltage_share = task_share.Share('f', thread_protect=False, name="R mot eff")  # Volts
     R_en_share = task_share.Share('H', thread_protect=False, name="R en")
-    R_pos_share = task_share.Share('f', thread_protect=False, name="R pos") # Encoder Counts
-    R_vel_share = task_share.Share('f', thread_protect=False, name="R vel") # Stores read velocity in counts/s
+    R_pos_share = task_share.Share('f', thread_protect=False, name="R pos")  # Encoder Counts
+    R_vel_share = task_share.Share('f', thread_protect=False, name="R vel")  # Stores read velocity in counts/s
     R_time_share = task_share.Share('I', thread_protect=False, name="R time")
     run = task_share.Share('H', thread_protect=False, name="run")
     print_out = task_share.Share('H', thread_protect=False, name="print out")
@@ -1009,7 +964,7 @@ if __name__ == "__main__":
     calib_black = task_share.Share('H', thread_protect=False, name="calib black")
     calib_white = task_share.Share('H', thread_protect=False, name="calib white")
     line_follow = task_share.Share('H', thread_protect=False, name="line follow")
-    position_follow = task_share.Share('H', thread_protect=False, name="position follow")
+    position_follow = task_share.Share('H', thread_protect=False, name="position follow boolean")
     wheel_diff = task_share.Share('f', thread_protect=False, name="wheel speed diff")
     yaw_angle_share = task_share.Share('f', thread_protect=False, name="yaw angle")
     yaw_rate_share = task_share.Share('f', thread_protect=False, name="yaw rate")
@@ -1021,16 +976,7 @@ if __name__ == "__main__":
     start_pathing = task_share.Share('H', thread_protect=False, name="start pathing")
     X_target = task_share.Share('f', thread_protect=False, name="X target")
     Y_target = task_share.Share('f', thread_protect=False, name="Y target")
-    course_start = task_share.Share('H', thread_protect=False, name="course start")
     dist_from_target = task_share.Share('f', thread_protect=False, name="distance from target")
-
-    # R_pos_queue = task_share.Queue('f', 100, name="R pos")
-    # R_vel_queue = task_share.Queue('f', 100, name="R vel")
-    # R_time_queue = task_share.Queue('I', 100, name="R time")
-    # L_pos_queue = task_share.Queue('f', 100, name="L pos")
-    # L_vel_queue = task_share.Queue('f', 100, name="L vel")
-    # L_time_queue = task_share.Queue('I', 100, name="L time")
-    # data_share = task_share.Share('i', name="data_share")
 
     # Create the tasks. If trace is enabled for any task, memory will be
     # allocated for state transition tracing, and the application will run out
@@ -1038,62 +984,51 @@ if __name__ == "__main__":
     # debugging and set trace to False when it's not needed2
 
     task_left_ops = cotask.Task(left_ops, name="Left ops", priority=3, period=20,
-                                profile=True, trace=True, shares=(L_lin_spd, L_en_share, L_pos_share, L_vel_share,
+                                profile=False, trace=False, shares=(L_lin_spd, L_en_share, L_pos_share, L_vel_share,
                                                                   L_time_share, wheel_diff, line_follow,
                                                                   L_voltage_share, position_follow))
     task_right_ops = cotask.Task(right_ops, name="Right ops", priority=4, period=20,
-                                 profile=True, trace=True, shares=(R_lin_spd, R_en_share, R_pos_share, R_vel_share,
+                                 profile=False, trace=False, shares=(R_lin_spd, R_en_share, R_pos_share, R_vel_share,
                                                                    R_time_share, wheel_diff, line_follow,
                                                                    R_voltage_share, position_follow))
     task_ui = cotask.Task(run_UI, name="UI", priority=1, period=100,
-                          profile=True, trace=True,
-                          shares=(L_lin_spd, L_en_share, R_lin_spd, R_en_share, run, print_out, time_start_share))
-
+                          profile=False, trace=False,
+                          shares=(L_lin_spd, L_en_share, R_lin_spd, R_en_share, run, print_out, time_start_share, start_pathing))
     task_collect_data = cotask.Task(collect_data, name="Collect Data", priority=0, period=20,
-                                    profile=True, trace=True, shares=(
+                                    profile=False, trace=False, shares=(
             R_lin_spd, L_lin_spd, R_pos_share, R_vel_share, R_time_share, L_pos_share, L_vel_share, L_time_share,
             yaw_angle_share, yaw_rate_share, IMU_time_share, dist_traveled_share, X_coords_share, Y_coords_share, run,
             print_out))
-
     task_read_battery = cotask.Task(battery_read, name="Battery", priority=0, period=2000,
-                                    profile=True, trace=True, shares=(bat_share, bat_flag))
+                                    profile=False, trace=False, shares=(bat_share, bat_flag))
     task_IR_sensor = cotask.Task(IR_sensor, name="IR sensor", priority=0, period=50,
-                                 profile=True, trace=True,
+                                 profile=False, trace=False,
                                  shares=(calib_black, calib_white, line_follow, L_lin_spd, R_lin_spd, wheel_diff))
     task_state_estimator = cotask.Task(IMU_OP, name="state estimator", priority=10, period=50,
-                                       profile=True, trace=True, shares=(
+                                       profile=False, trace=False, shares=(
             L_pos_share, R_pos_share, L_voltage_share, R_voltage_share, L_vel_share, R_vel_share, yaw_angle_share,
             yaw_rate_share, dist_traveled_share, IMU_time_share, time_start_share, X_coords_share, Y_coords_share))
-
-    task_bump_sensor = cotask.Task(bump_sensors, name = "bump sensor Interrupt", priority=0, period = 20,
-                                   profile=True, trace=True, shares = (R_lin_spd, L_lin_spd))
-    # task_pathing = cotask.Task(pathing, name = "Pathing", priority=0, period = 100, profile = True, trace=True,
-    #                            shares = (L_vel_share, R_vel_share, X_coords_share, Y_coords_share, dist_traveled_share, start_pathing, line_follow))
-    task_commander = cotask.Task(commander, name="Commander", priority=0, period=10, profile=True, trace=True,
-                               shares=(X_coords_share, Y_coords_share, start_pathing, position_follow,
-                                       line_follow, X_target, Y_target, course_start, dist_from_target, distance_traveled_share))
-
-
-    task_garbage_collect = cotask.Task(garbage_collect, name="Garbage collect", priority=0, period=5, profile=True, trace=True,
-                               shares=())
-    task_position_controller = cotask.Task(PositionControl, name="Commander", priority=0, period=10, profile=True, trace=True,
-                                 shares=( X_coords_share, Y_coords_share, start_pathing, IMU_time_share, yaw_angle_share, wheel_diff,
-                                        dist_from_target, X_target, Y_target))
-
-    # cotask.task_list.append(task1)
-    # cotask.task_list.append(task2)
+    task_bump_sensor = cotask.Task(bump_sensors, name="bump sensor Interrupt", priority=0, period=20,
+                                   profile=False, trace=False, shares=(R_lin_spd, L_lin_spd))
+    task_commander = cotask.Task(commander, name="Commander", priority=0, period=10, profile=False, trace=False,
+                                 shares=(X_coords_share, Y_coords_share, start_pathing, position_follow,
+                                         line_follow, X_target, Y_target, dist_from_target,
+                                         dist_traveled_share))
+    task_position_controller = cotask.Task(PositionControl, name="Position controller", priority=0, period=10, profile=False,
+                                           trace=False,
+                                           shares=(X_coords_share, Y_coords_share, start_pathing, IMU_time_share,
+                                                   yaw_angle_share, wheel_diff,
+                                                   dist_from_target, X_target, Y_target))
 
     # Add tasks to task list to run in scheduler
     cotask.task_list.append(task_left_ops)
-    cotask.task_list.append(task_right_ops) 
+    cotask.task_list.append(task_right_ops)
     cotask.task_list.append(task_ui)
     cotask.task_list.append(task_collect_data)
     cotask.task_list.append(task_read_battery)
     cotask.task_list.append(task_IR_sensor)
     cotask.task_list.append(task_state_estimator)
     cotask.task_list.append(task_bump_sensor)
-    # cotask.task_list.append(task_pathing)
-    cotask.task_list.append(task_garbage_collect)
     cotask.task_list.append(task_commander)
     cotask.task_list.append(task_position_controller)
 
@@ -1107,11 +1042,6 @@ if __name__ == "__main__":
     while True:
         try:
             cotask.task_list.pri_sched()
-            # line = uart.readline()
-            # if not line:
-            #     continue
-            # print(f"line: {line}")
-        
         except KeyboardInterrupt:
             mot_left.disable()
             mot_right.disable()
@@ -1119,7 +1049,7 @@ if __name__ == "__main__":
             print(task_share.show_all())
             print('')
             break
-  
+
         except:
             mot_left.disable()
             mot_right.disable()

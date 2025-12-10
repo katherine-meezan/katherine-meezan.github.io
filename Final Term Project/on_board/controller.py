@@ -136,7 +136,7 @@ class IRController():
         return ctrl_sig
 
 class PositionController():
-    def __init__(self, target, old_ticks, old_state, K3, Kp=1, Ki=1, min_sat=-4, max_sat=4, t_init=0, use_integral=1):
+    def __init__(self, target, old_ticks, old_state, K3, Kp=1, Ki=1, min_sat=-30, max_sat=30, t_init=0, use_integral=1):
         # super().__init__(target, old_ticks, old_state, Kp, Ki, min_sat, max_sat, t_init)
         self.target = target
         self.old_ticks = old_ticks

@@ -99,7 +99,7 @@ ir_sensor_array = sensor_array(channels, 4, 8)
 centroid_set_point = 0
 
 ir_controller = IRController(centroid_set_point, 0, 0, K3=1, Kp=1, Ki=0)
-position_controller = PositionController(0, 0, 0, K3=1, Kp=1, Ki=0)
+position_controller = PositionController(0, 0, 0, K3=1, Kp=1, Ki=1)
 
 """! Setup for IMU !"""
 
@@ -183,11 +183,17 @@ def yaw_error(x_curr, y_curr, yaw_curr, x_set, y_set):  # calculates difference 
 
 def commander(shares):
     x_position, y_position, start_pathing, position_follow, line_follow, x_target, y_target, dist_from_target, distance_traveled_share, R_lin_spd, L_lin_spd = shares
-    # com_1 = Command("lin", 700, 200, 800, 800) # Line follow from start to first fork
-    # com_2 = Command("pos", 90, 200, 850, 775) # Move until past the first Y
+    com_1 = Command("lin", 600, 200, 750, 800) # Line follow from start to first fork
+    # com_2 = Command("pos", 90, 200, 950, 425) # Move until past the first Y
+    com_2 = Command("pos", 0, 200, 770, 750) # Slightly adjust past first Y
+    com_3 = Command("lin", 120, 200, 950, 600) # Line follow until Diamond
+    com_4 = Command("pos", 0, 200, 950, 420) # position track to CP1
+    com_5 = Command("lin", 200, 400, 1250, 400) # Line follow around half circle until dashed lines
     
-    # _operations = [com_1, com_2]
-    _operations = [Command("pos", 300, 200, 800, 400)]
+    com_end = Command("lin", 0, 0, 0, 0) # Command that is the last one so that Romi stops
+    # _operations = [com_1, com_2, com_3, com_4, com_5, com_end]
+    _operations = [com_1, com_2, com_end]
+    # _operations = [Command("pos", 90, 200, 950, 700), com_end]
     op_ind = 0
     """
     ADD COMMAND OBJECTS TO THE LIST TO BE EXECUTED IN ORDER
@@ -213,15 +219,20 @@ def commander(shares):
             L_lin_spd.put(curr_command.lin_speed)
             if curr_command.mode == "lin":  # line follower mode
                 line_follow.put(1)
+                starting_dist_traveled = distance_traveled_share.get()
                 # position_follow.put(0)
                 print("Parsed lin mode")
             elif curr_command.mode == "pos":  # position follower mode
                 print("Parsed Pos mode")
                 position_follow.put(1)
                 # line_follow.put(0)
-                dist_from_target.put(curr_command.end_condition + 50) # So that done does not equal true immediately; actual dist is computed in controller task
                 x_target.put(curr_command.x_coord)
                 y_target.put(curr_command.y_coord)
+                
+                yaw_err, dist_to_checkpoint = yaw_error(x_position.get(), y_position.get(), yaw_angle_share.get(),
+                                                        X_target.get(), Y_target.get())
+                dist_from_target.put(dist_to_checkpoint)
+                old_dist_to_checkpoint = dist_to_checkpoint
             # elif curr_command.mode == "bmp": # bumper mode
             #     pass
             # elif curr_command.mode == "rev": # blind reverse mode
@@ -234,19 +245,27 @@ def commander(shares):
             done = 0
             # print("State 2 in command task")
             if curr_command.mode == "lin":  # line follower mode
-                done = curr_command.check_end_condition(distance_traveled_share.get())
+                done = curr_command.check_end_condition(distance_traveled_share.get() - starting_dist_traveled)
             elif curr_command.mode == "pos":  # position follower mode
                 # print("position control mode in command task")
-                print(dist_from_target.get())
+                # print(dist_from_target.get())
+                
                 done = curr_command.check_end_condition(dist_from_target.get())
+                # Will stop romi if it misses the target
+                if old_dist_to_checkpoint < dist_from_target.get():
+                    done = 1
+                    print("stopped because checkpoint was not reached")
+                old_dist_to_checkpoint = dist_from_target.get()
                 # print(f"Done: {done}")
             # elif curr_command.mode == 2: # bumper mode
             #
             # elif curr_command.mode == 3: # blind reverse mode
+            
             if done:
                 op_ind += 1
                 position_follow.put(0)
                 line_follow.put(0)
+                
                 # _operations.pop(0)  # remove command that has completed executing
                 print("Operation done, state 0")
                 state = 0
@@ -276,12 +295,13 @@ def PositionControl(shares):
                 state = 1
         elif state == 1:
             # timestamp sensor reading for controller
-            print("position controller running")
+            # print("position controller running")
             yaw_err, dist_to_checkpoint = yaw_error(x_position.get(), y_position.get(), yaw_angle_share.get(),
                                                     X_target.get(), Y_target.get())
             print(f"Dist to checkpoint: {dist_to_checkpoint}")
+            
             control_output_diff = position_controller.get_action(IMU_time_share.get(), yaw_err)
-            scaled_speed_diff = control_output_diff * 70
+            scaled_speed_diff = control_output_diff * 170
             dist_from_target.put(dist_to_checkpoint)  # used to check command completion in commander task
             wheel_diff.put(scaled_speed_diff)
             if not position_follow.get():
@@ -478,10 +498,7 @@ def IMU_OP(shares):
             x_hat_old = x_hat_new
             S_diff = x_hat_new[2] - dist_traveled_old
             global_coords[0] = global_coords[0] + S_diff * cos(-1 * y_measured[2])
-            if y_measured[2] >= 3.14:
-                global_coords[1] = global_coords[1] + S_diff * sin(-1 * y_measured[2])
-            else:
-                global_coords[1] = global_coords[1] + S_diff * sin(-1 * y_measured[2])
+            global_coords[1] = global_coords[1] + S_diff * sin(-1 * y_measured[2])
 
             # print(f"Angle: {-1* y_measured[3]} sin value: {sin(-1* y_measured[3])} cos value: {cos(-1* y_measured[3])}" )
             # print(f"Psi: {y_measured[3]}, S: {x_hat_new[2]}")
@@ -646,9 +663,9 @@ def run_UI(shares):
             if uart.any():
                 uart.read()
         elif state == 1:
-            uart.write("Here!")
+            # uart.write("Here!")
             if uart.any():  # wait for any character
-                uart.write("Yay")
+                # uart.write("Yay")
                 char_in = uart.read(1).decode()
                 state = 2
         elif state == 2:  # decode character
@@ -938,11 +955,11 @@ if __name__ == "__main__":
     uart.write("Testing ME405 stuff in cotask.py and task_share.py\r\n"
                "Press Ctrl-C to stop and show diagnostics")
 
-    # # print("BYTES OF FREE MEMORY")
-    # gc.collect()
-    # print(gc.mem_free())
-    # # print("Total amount of memory")
-    # print(gc.mem_alloc())
+    print("BYTES OF FREE MEMORY")
+    gc.collect()
+    print(gc.mem_free())
+    print("Total amount of memory")
+    print(gc.mem_alloc())
     # Create Share objects for inter-task communication
     L_lin_spd = task_share.Share('f', thread_protect=False, name="L lin spd")  # Controls Motor Setpoint, in mm/s
     L_voltage_share = task_share.Share('f', thread_protect=False, name="L mot eff")  # Volts

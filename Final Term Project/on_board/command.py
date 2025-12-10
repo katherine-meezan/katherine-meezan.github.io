@@ -22,7 +22,7 @@ class Command():
         self.lin_speed = lin_speed # desired linear speed of romi in mm/s
     def check_end_condition(self, state): # returns 1 if the end condition has been reached
         if self.mode == "pos":
-            if state <= self.end_condition: # check that Romi is closer than the threshold
+            if state <= 10: # check that Romi is closer than the threshold
                 return 1
             return 0
         else:

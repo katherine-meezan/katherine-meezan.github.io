@@ -162,14 +162,16 @@ def yaw_error(x_curr, y_curr, yaw_curr, x_set, y_set):  # calculates difference 
     C_y = sin(yaw_curr)
     # Theta is the angle between vectors, but is always positive
     theta = acos((C_x * E_x + C_y * E_y) / E_mag)
-    cross = C_x * E_x - C_y * E_y
+    cross = C_x * E_y - C_y * E_x
     # positive sign means theta is CCW, negative is CW
     # output is the angle FROM E to C
     sign = -1 * cross / abs(cross)
     return theta * sign, E_mag
 
 """! Tasks defined as Functions:
+    commander
     bump_sensors
+    PositionControl
     IR_sensor
     IMU_OP
     left_ops
@@ -181,7 +183,11 @@ def yaw_error(x_curr, y_curr, yaw_curr, x_set, y_set):  # calculates difference 
 
 def commander(shares):
     x_position, y_position, start_pathing, position_follow, line_follow, x_target, y_target, dist_from_target, distance_traveled_share, R_lin_spd, L_lin_spd = shares
-    _operations = [const(Command("pos", 100, 200, 800, 800))]
+    # com_1 = Command("lin", 700, 200, 800, 800) # Line follow from start to first fork
+    # com_2 = Command("pos", 90, 200, 850, 775) # Move until past the first Y
+    
+    # _operations = [com_1, com_2]
+    _operations = [Command("pos", 300, 200, 800, 400)]
     op_ind = 0
     """
     ADD COMMAND OBJECTS TO THE LIST TO BE EXECUTED IN ORDER
@@ -193,6 +199,7 @@ def commander(shares):
         if state == 0:
             if op_ind < len(_operations) and start_pathing.get():  # check if commands list is empty
                 curr_command = _operations[op_ind]
+                print(f"Current command is {op_ind}")
                 state = 1
             else:
                 # stop moving Romi, since course is completed.
@@ -206,8 +213,13 @@ def commander(shares):
             L_lin_spd.put(curr_command.lin_speed)
             if curr_command.mode == "lin":  # line follower mode
                 line_follow.put(1)
+                # position_follow.put(0)
+                print("Parsed lin mode")
             elif curr_command.mode == "pos":  # position follower mode
+                print("Parsed Pos mode")
                 position_follow.put(1)
+                # line_follow.put(0)
+                dist_from_target.put(curr_command.end_condition + 50) # So that done does not equal true immediately; actual dist is computed in controller task
                 x_target.put(curr_command.x_coord)
                 y_target.put(curr_command.y_coord)
             # elif curr_command.mode == "bmp": # bumper mode
@@ -220,11 +232,14 @@ def commander(shares):
         elif state == 2:
             # check if the command has been fulfilled
             done = 0
+            # print("State 2 in command task")
             if curr_command.mode == "lin":  # line follower mode
                 done = curr_command.check_end_condition(distance_traveled_share.get())
             elif curr_command.mode == "pos":  # position follower mode
-                # print(dist_from_target.get())
+                # print("position control mode in command task")
+                print(dist_from_target.get())
                 done = curr_command.check_end_condition(dist_from_target.get())
+                # print(f"Done: {done}")
             # elif curr_command.mode == 2: # bumper mode
             #
             # elif curr_command.mode == 3: # blind reverse mode
@@ -232,7 +247,8 @@ def commander(shares):
                 op_ind += 1
                 position_follow.put(0)
                 line_follow.put(0)
-                _operations.pop(0)  # remove command that has completed executing
+                # _operations.pop(0)  # remove command that has completed executing
+                print("Operation done, state 0")
                 state = 0
         yield state
 def bump_sensors(shares):
@@ -249,23 +265,26 @@ def bump_sensors(shares):
             print("OW")
         yield state
 def PositionControl(shares):
-    x_position, y_position, start_pathing, IMU_time_share, yaw_angle_share, wheel_diff, dist_from_target, X_target, Y_target = shares
+    x_position, y_position, position_follow, IMU_time_share, yaw_angle_share, wheel_diff, dist_from_target, X_target, Y_target = shares
     state = 0
     while True:
         if state == 0:
-            if start_pathing.get():
+            # print("position control state 0")
+            if position_follow.get():
                 position_controller.enable_integral_error()
                 position_controller.old_ticks = IMU_time_share.get()
                 state = 1
         elif state == 1:
             # timestamp sensor reading for controller
+            print("position controller running")
             yaw_err, dist_to_checkpoint = yaw_error(x_position.get(), y_position.get(), yaw_angle_share.get(),
                                                     X_target.get(), Y_target.get())
+            print(f"Dist to checkpoint: {dist_to_checkpoint}")
             control_output_diff = position_controller.get_action(IMU_time_share.get(), yaw_err)
             scaled_speed_diff = control_output_diff * 70
             dist_from_target.put(dist_to_checkpoint)  # used to check command completion in commander task
             wheel_diff.put(scaled_speed_diff)
-            if not start_pathing.get():
+            if not position_follow.get():
                 position_controller.enable_integral_error()
                 state = 0
         yield state
@@ -285,7 +304,7 @@ def IR_sensor(shares):
             elif line_follow.get() == 1:
                 ir_controller.enable_integral_error()
                 state = 3
-        elif state == 1:
+        elif state == 1: # Calibration if needed
             # print("Starting Black Calibration!")
             calib_start = ticks_ms()
             # ir_sensor_array.calibrate_black()
@@ -310,6 +329,7 @@ def IR_sensor(shares):
         elif state == 3:
             ir_sensor_array.blacks = const([3206.13, 2983.14, 3063.67, 2910.69, 2800.52, 2930.22, 3063.97])
             ir_sensor_array.whites = const([360.62, 299.06, 297.68, 286.17, 281.66, 295.05, 316.05])
+            print("Line following now")
             ir_controller.set_target(centroid_set_point)
             ir_sensor_array.array_read()
             ir_ticks_new = ticks_us()  # timestamp sensor reading for controller
@@ -340,8 +360,8 @@ def IMU_OP(shares):
     y_measured = np.array(np.zeros(4).reshape(4, ))
     y_hat = np.array(np.zeros(4).reshape(4, ))
     # Set initial global coordinates
-    global_coords = [0, 0]
-    est_global_coords = [0, 0]
+    global_coords = [100, 800]
+    est_global_coords = [100, 800]
     # https://docs.micropython.org/en/latest/library/micropython.html#micropython.const
     _A_d = np.array(const(
         [0.499445, 0.499445, 0.001942, 0.002727, 0.499445, 0.499445, 0.001942, -0.002727, 0.285397, 0.285397, 0.001110,
@@ -468,7 +488,7 @@ def IMU_OP(shares):
             # global_coords = updateXY(global_coords[0], global_coords[1])
             x_position.put(global_coords[0])
             y_position.put(global_coords[1])
-            # print(f"x-coord: {global_coords[0]}, y-coord: {global_coords[1]}")
+            print(f"x-coord: {global_coords[0]}, y-coord: {global_coords[1]}")
             # use estimated states for the  position calculator
             est_global_coords[0] = est_global_coords[0] + S_diff * cos(-1 * y_measured[2])
             if y_hat[2] >= 3.14:
@@ -944,7 +964,7 @@ if __name__ == "__main__":
     calib_black = task_share.Share('H', thread_protect=False, name="calib black")
     calib_white = task_share.Share('H', thread_protect=False, name="calib white")
     line_follow = task_share.Share('H', thread_protect=False, name="line follow")
-    position_follow = task_share.Share('H', thread_protect=False, name="position follow boolean")
+    position_follow = task_share.Share('H', thread_protect=False, name="position follow boolean") # Indicates whether position follow control is active
     wheel_diff = task_share.Share('f', thread_protect=False, name="wheel speed diff")
     yaw_angle_share = task_share.Share('f', thread_protect=False, name="yaw angle")
     yaw_rate_share = task_share.Share('f', thread_protect=False, name="yaw rate")
@@ -953,7 +973,7 @@ if __name__ == "__main__":
     time_start_share = task_share.Share('I', thread_protect=False, name="time start")
     X_coords_share = task_share.Share('f', thread_protect=False, name="X coordinate")
     Y_coords_share = task_share.Share('f', thread_protect=False, name="Y coordinate")
-    start_pathing = task_share.Share('H', thread_protect=False, name="start pathing")
+    start_pathing = task_share.Share('H', thread_protect=False, name="start pathing") # Boolean from UI task to start command pathing
     X_target = task_share.Share('f', thread_protect=False, name="X target")
     Y_target = task_share.Share('f', thread_protect=False, name="Y target")
     dist_from_target = task_share.Share('f', thread_protect=False, name="distance from target")
@@ -990,13 +1010,13 @@ if __name__ == "__main__":
             yaw_rate_share, dist_traveled_share, IMU_time_share, time_start_share, X_coords_share, Y_coords_share))
     task_bump_sensor = cotask.Task(bump_sensors, name="bump sensor", priority=0, period=20,
                                    profile=True, trace=False, shares=(R_lin_spd, L_lin_spd))
-    task_commander = cotask.Task(commander, name="Commander", priority=0, period=10, profile=True, trace=False,
+    task_commander = cotask.Task(commander, name="Commander", priority=0, period=15, profile=True, trace=False,
                                  shares=(X_coords_share, Y_coords_share, start_pathing, position_follow,
                                          line_follow, X_target, Y_target, dist_from_target,
                                          dist_traveled_share, R_lin_spd, L_lin_spd))
     task_position_controller = cotask.Task(PositionControl, name="Pos CTRL", priority=0, period=10, profile=True,
                                            trace=False,
-                                           shares=(X_coords_share, Y_coords_share, start_pathing, IMU_time_share,
+                                           shares=(X_coords_share, Y_coords_share, position_follow, IMU_time_share,
                                                    yaw_angle_share, wheel_diff,
                                                    dist_from_target, X_target, Y_target))
 

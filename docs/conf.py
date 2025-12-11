@@ -13,7 +13,7 @@ html_theme = "sphinx_rtd_theme"
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-project = 'ME405_FinalProject'
+project = 'ME 405 Final Project'
 copyright = '2025, Katherine Meezan, Michael Habib, Zachery Boyer'
 author = 'Katherine Meezan, Michael Habib, Zachery Boyer'
 release = '1'

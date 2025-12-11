@@ -180,7 +180,7 @@ def yaw_error(x_curr, y_curr, yaw_curr, x_set, y_set):  # calculates difference 
     !"""
 
 def commander(shares):
-    x_position, y_position, start_pathing, position_follow, line_follow, x_target, y_target, dist_from_target, distance_traveled_share, R_lin_spd, L_lin_spd = shares
+    x_position, y_position, start_pathing, position_follow, line_follow, x_target, y_target, dist_from_target, distance_traveled_share, R_lin_spd, L_lin_spd, bumper_pressed = shares
     com_1 = Command("lin", 620, 200, 720, 800) # Line follow from start to first fork
     # com_2 = Command("pos", 90, 200, 950, 425) # Move until past the first Y
     com_2 = Command("yaw", .33, 200, 920, 600) # Slightly adjust past first Y
@@ -232,9 +232,6 @@ def commander(shares):
                                                         X_target.get(), Y_target.get())
                 dist_from_target.put(dist_to_checkpoint)
                 old_dist_to_checkpoint = dist_to_checkpoint
-                
-                
-                
             elif curr_command.mode == "yaw":  # position follower mode, yaw setpoint
                 print("Parsed yaw mode")
                 position_follow.put(1)
@@ -247,8 +244,9 @@ def commander(shares):
                 dist_from_target.put(dist_to_checkpoint)
                 # old_dist_to_checkpoint = dist_to_checkpoint
                 yaw_initial = yaw_angle_share.get()
-            # elif curr_command.mode == "bmp": # bumper mode
-            #     pass
+            elif curr_command.mode == "bmp": # bumper mode
+                print("Parsed bumper mode")
+                line_follow.put(1)
             # elif curr_command.mode == "rev": # blind reverse mode
             #     pass
             R_lin_spd.put(curr_command.lin_speed)
@@ -266,7 +264,6 @@ def commander(shares):
             elif curr_command.mode == "pos":  # position follower mode
                 # print("position control mode in command task")
                 # print(dist_from_target.get())
-                
                 done = curr_command.check_end_condition(dist_from_target.get())
                 # Will stop romi if it misses the target
                 if old_dist_to_checkpoint < dist_from_target.get():
@@ -284,32 +281,35 @@ def commander(shares):
                  
                  print(f"Yaw diff: {yaw_diff}, {done}")
                   # Will stop romi if it misses the target
-                 
                 # print(f"Done: {done}")
-            # elif curr_command.mode == 2: # bumper mode
-            #
+            elif curr_command.mode == "bmp": # bumper mode
+                done = curr_command.check_end_condition(bumper_pressed.get())
+                if done:
+                    print("bumper pressed")
             # elif curr_command.mode == 3: # blind reverse mode
             
             if done:
                 op_ind += 1
                 position_follow.put(0)
                 line_follow.put(0)
+                bumper_pressed.put(0)
                 
                 # _operations.pop(0)  # remove command that has completed executing
                 print("Operation done, state 0")
                 state = 0
         yield state
 def bump_sensors(shares):
-    r_velocity, l_velocity = shares
+    r_velocity, l_velocity, bumper_pressed = shares
     state = 1
     while True:
         if (not PB12.value() or not PB13.value()):  # This condition being true indicates one of the bump sensor activated
             r_velocity.put(0)
             l_velocity.put(0)
             sleep_ms(10)
-            mot_left.disable()
-            mot_right.disable()
+            # mot_left.disable()
+            # mot_right.disable()
             line_follow.put(0)
+            bumper_pressed.put(1)
             print("OW")
         yield state
 def PositionControl(shares):
@@ -1019,6 +1019,7 @@ if __name__ == "__main__":
     X_target = task_share.Share('f', thread_protect=False, name="X target")
     Y_target = task_share.Share('f', thread_protect=False, name="Y target")
     dist_from_target = task_share.Share('f', thread_protect=False, name="distance from target")
+    bumper_pressed = task_share.Share('H', thread_protect=False, name="bmp pressed") # set by bumper task, cleared by commander
 
     # Create the tasks. If trace is enabled for any task, memory will be
     # allocated for state transition tracing, and the application will run out
@@ -1051,11 +1052,11 @@ if __name__ == "__main__":
             L_pos_share, R_pos_share, L_voltage_share, R_voltage_share, L_vel_share, R_vel_share, yaw_angle_share,
             yaw_rate_share, dist_traveled_share, IMU_time_share, time_start_share, X_coords_share, Y_coords_share))
     task_bump_sensor = cotask.Task(bump_sensors, name="bump sensor", priority=0, period=20,
-                                   profile=True, trace=False, shares=(R_lin_spd, L_lin_spd))
+                                   profile=True, trace=False, shares=(R_lin_spd, L_lin_spd, bumper_pressed))
     task_commander = cotask.Task(commander, name="Commander", priority=0, period=10, profile=True, trace=False,
                                  shares=(X_coords_share, Y_coords_share, start_pathing, position_follow,
                                          line_follow, X_target, Y_target, dist_from_target,
-                                         dist_traveled_share, R_lin_spd, L_lin_spd))
+                                         dist_traveled_share, R_lin_spd, L_lin_spd, bumper_pressed))
     task_position_controller = cotask.Task(PositionControl, name="Pos CTRL", priority=0, period=10, profile=True,
                                            trace=False,
                                            shares=(X_coords_share, Y_coords_share, position_follow, IMU_time_share,

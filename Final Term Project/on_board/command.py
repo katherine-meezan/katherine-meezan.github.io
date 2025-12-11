@@ -24,7 +24,6 @@ class Command():
         if self.mode == "pos":
             if state <= 10: # check that Romi is closer than the threshold
                 return 1
-            
         else:
             if state >= self.end_condition: # for other states, the command has been fulfilled when the threshold is passed
                 return 1

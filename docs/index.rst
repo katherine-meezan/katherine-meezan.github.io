@@ -6,6 +6,9 @@
 ME 405 Final Project documentation
 ================================
 
+This is the home page for the mecha-09 ME 405 Final Project Documentation!
+
+
 Add your content using ``reStructuredText`` syntax. See the
 `reStructuredText <https://www.sphinx-doc.org/en/master/usage/restructuredtext/index.html>`_
 documentation for details.
